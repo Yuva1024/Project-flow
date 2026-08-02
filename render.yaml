@@ -1,0 +1,23 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: Connect this repo to Render and it will auto-detect this file
+
+services:
+  - type: web
+    name: projectflow-api
+    runtime: node
+    region: singapore  # closest to Neon AP-Southeast
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # set manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false  # set to your Vercel URL after frontend deploy
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
