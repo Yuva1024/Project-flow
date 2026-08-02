@@ -4,10 +4,15 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2 } from "lucide-react";
 import { Card } from "@/store/board";
-
-const PRIORITY_COLORS: Record<string, string> = { URGENT: "#ef4444", HIGH: "#f59e0b", MEDIUM: "#5f62f1", LOW: "#10b981" };
+import Sketchfab3DViewer from "@/components/Sketchfab3DViewer";
 const LABEL_PRESETS = ["#5f62f1", "#ef4444", "#10b981", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#84cc16", "#fb923c", "#818cf8"];
+const SHOW_3D_VIEWER = false; // Set to true to activate 3D Model Viewer feature
 
+const getSketchfabId = (url: string) => {
+    if (!url || !url.includes('sketchfab.com')) return null;
+    const match = url.match(/([a-f0-9]{32})/i);
+    return match ? match[1] : null;
+};
 
 interface Props { card: Card; workspaceId: string; boardId: string; onClose: () => void; onRefresh: () => void; }
 
@@ -352,36 +357,38 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
 
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                 {/* 3D Model Viewer Accordion */}
-                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                    <button onClick={() => { setShow3DSectionForm(!show3DSectionForm); setShowLabelPicker(false); setShowMemberPicker(false); setShowAddChecklist(false); }}
-                                            style={{ width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: "var(--radius)", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", background: show3DSectionForm ? "var(--bg-hover)" : "var(--bg-elevated)", border: show3DSectionForm ? "1px solid var(--border-active)" : "1px solid var(--border)", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms" }}
-                                            onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
-                                            onMouseOut={(e) => e.currentTarget.style.borderColor = show3DSectionForm ? "var(--border-active)" : "var(--border)"}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <Box size={13} style={{ color: "var(--accent)" }} /> 3D Model Viewer
-                                            {model3DSections.length > 0 && (
-                                                <span style={{ background: "var(--accent)", color: "white", padding: "2px 6px", borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{model3DSections.length}</span>
-                                            )}
-                                        </div>
-                                        {show3DSectionForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                    </button>
-                                    {show3DSectionForm && (
-                                        <form onSubmit={handleCreate3DSection} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border-active)", display: "flex", flexDirection: "column", gap: 10 }}>
-                                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>Asset Section Name</label>
-                                            <input
-                                                type="text"
-                                                value={new3DSectionName}
-                                                onChange={(e) => setNew3DSectionName(e.target.value)}
-                                                placeholder="e.g. Hero Model v1"
-                                                style={{ fontSize: 12, padding: "7px 10px" }}
-                                                autoFocus
-                                            />
-                                            <button type="submit" className="btn-primary" style={{ width: "100%", fontSize: 11.5, padding: "7px 0" }}>
-                                                + Add 3D Section
-                                            </button>
-                                        </form>
-                                    )}
-                                </div>
+                                {SHOW_3D_VIEWER && (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                        <button onClick={() => { setShow3DSectionForm(!show3DSectionForm); setShowLabelPicker(false); setShowMemberPicker(false); setShowAddChecklist(false); }}
+                                                style={{ width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: "var(--radius)", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", background: show3DSectionForm ? "var(--bg-hover)" : "var(--bg-elevated)", border: show3DSectionForm ? "1px solid var(--border-active)" : "1px solid var(--border)", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms" }}
+                                                onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
+                                                onMouseOut={(e) => e.currentTarget.style.borderColor = show3DSectionForm ? "var(--border-active)" : "var(--border)"}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                <Box size={13} style={{ color: "var(--accent)" }} /> 3D Model Viewer
+                                                {model3DSections.length > 0 && (
+                                                    <span style={{ background: "var(--accent)", color: "white", padding: "2px 6px", borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{model3DSections.length}</span>
+                                                )}
+                                            </div>
+                                            {show3DSectionForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                        {show3DSectionForm && (
+                                            <form onSubmit={handleCreate3DSection} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border-active)", display: "flex", flexDirection: "column", gap: 10 }}>
+                                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>Asset Section Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={new3DSectionName}
+                                                    onChange={(e) => setNew3DSectionName(e.target.value)}
+                                                    placeholder="e.g. Hero Model v1"
+                                                    style={{ fontSize: 12, padding: "7px 10px" }}
+                                                    autoFocus
+                                                />
+                                                <button type="submit" className="btn-primary" style={{ width: "100%", fontSize: 11.5, padding: "7px 0" }}>
+                                                    + Add 3D Section
+                                                </button>
+                                            </form>
+                                        )}
+                                    </div>
+                                )}
                                 {/* Labels Accordion */}
                                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                     <button onClick={() => { setShowLabelPicker(!showLabelPicker); setShowMemberPicker(false); setShowAddChecklist(false); }}
@@ -750,7 +757,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         </div>
 
                         {/* 3D Model Sections (placed below Attachments) */}
-                        {model3DSections.map((sec) => (
+                        {SHOW_3D_VIEWER && model3DSections.map((sec) => (
                             <div key={sec.id} style={{ borderRadius: "var(--radius-lg)", padding: 18, background: "var(--bg-elevated)", border: "1px solid var(--border-hover)", display: "flex", flexDirection: "column", gap: 14 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                     <h3 style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
@@ -766,69 +773,58 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                 </div>
 
                                 {/* Controls & Upload Row */}
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                                    <div style={{ flex: 1, minWidth: 180 }}>
-                                        <select value={sec.modelUrl} onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)} style={{ fontSize: 12, padding: "6px 10px" }}>
-                                            <option value="">Select a 3D Model</option>
-                                            {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).length > 0 && (
-                                                <optgroup label="Uploaded 3D Files">
-                                                    {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).map((a: any) => (
-                                                        <option key={a.id} value={a.fileUrl}>🎮 {a.fileName}</option>
-                                                    ))}
-                                                </optgroup>
-                                            )}
-                                        </select>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                                        <div style={{ flex: 1, minWidth: 180 }}>
+                                            <select value={sec.modelUrl} onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)} style={{ fontSize: 12, padding: "6px 10px" }}>
+                                                <option value="">Select an attached 3D file</option>
+                                                {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).length > 0 && (
+                                                    <optgroup label="Uploaded 3D Files">
+                                                        {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).map((a: any) => (
+                                                            <option key={a.id} value={a.fileUrl}>🎮 {a.fileName}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                            </select>
+                                        </div>
+
+                                        <label style={{ cursor: "pointer" }}>
+                                            <input type="file" accept=".glb,.gltf,.obj" onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    handleFileUpload(file).then((att) => {
+                                                        if (att?.fileUrl) {
+                                                            handleUpdate3DSectionModel(sec.id, att.fileUrl);
+                                                            toast.success(`Uploaded ${file.name} to 3D section!`);
+                                                        }
+                                                    });
+                                                }
+                                            }} style={{ display: "none" }} />
+                                            <span className="btn-secondary" style={{ fontSize: 11.5, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                                                <UploadCloud size={13} /> Upload .GLB / .GLTF
+                                            </span>
+                                        </label>
                                     </div>
 
-                                    <label style={{ cursor: "pointer" }}>
-                                        <input type="file" accept=".glb,.gltf,.obj" onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                handleFileUpload(file).then((att) => {
-                                                    if (att?.fileUrl) {
-                                                        handleUpdate3DSectionModel(sec.id, att.fileUrl);
-                                                        toast.success(`Uploaded ${file.name} to 3D section!`);
-                                                    }
-                                                });
-                                            }
-                                        }} style={{ display: "none" }} />
-                                        <span className="btn-secondary" style={{ fontSize: 11.5, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
-                                            <UploadCloud size={13} /> Upload .GLB / .GLTF
-                                        </span>
-                                    </label>
-                                </div>
-
-                                {/* Interactive 3D Canvas */}
-                                <div style={{ borderRadius: "var(--radius)", overflow: "hidden", background: "#06070a", border: "1px solid var(--border)", position: "relative" }}>
-                                    {/* @ts-ignore */}
-                                    <model-viewer
-                                        src={sec.modelUrl}
-                                        alt={`3D Model - ${sec.title}`}
-                                        camera-controls
-                                        auto-rotate={sec.autoRotate ? true : undefined}
-                                        shadow-intensity="1"
-                                        touch-action="pan-y"
-                                        style={{ width: "100%", height: "260px", display: "block" }}
+                                    {/* Direct URL / Sketchfab URL Input */}
+                                    <input
+                                        type="text"
+                                        placeholder="Or paste Sketchfab link / direct 3D model URL..."
+                                        value={sec.modelUrl}
+                                        onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)}
+                                        style={{ fontSize: 11.5, padding: "6px 10px" }}
                                     />
-
-                                    {/* Control Badges */}
-                                    <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 6, zIndex: 10 }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleToggleAutoRotate(sec.id)}
-                                            style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, background: sec.autoRotate ? "var(--accent)" : "rgba(0,0,0,0.7)", color: "white", border: "none", cursor: "pointer", backdropFilter: "blur(4px)" }}
-                                            title="Toggle Auto Rotation">
-                                            {sec.autoRotate ? "Pause Spin" : "Auto Spin"}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setLightboxMedia({ type: '3d', url: sec.modelUrl, title: `3D Model — ${sec.title}` })}
-                                            style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, background: "rgba(0,0,0,0.7)", color: "white", border: "none", cursor: "pointer", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 4 }}
-                                            title="Open Fullscreen 3D Model">
-                                            <Maximize2 size={11} /> Fullscreen
-                                        </button>
-                                    </div>
                                 </div>
+
+                                {/* Interactive 3D Canvas / Sketchfab Viewer */}
+                                <Sketchfab3DViewer
+                                    src={sec.modelUrl}
+                                    title={`3D Model — ${sec.title}`}
+                                    autoRotate={sec.autoRotate}
+                                    onToggleAutoRotate={() => handleToggleAutoRotate(sec.id)}
+                                    onFullscreen={() => setLightboxMedia({ type: '3d', url: sec.modelUrl, title: `3D Model — ${sec.title}` })}
+                                    height="320px"
+                                />
                             </div>
                         ))}
 
@@ -952,16 +948,12 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             <video controls autoPlay src={lightboxMedia.url} style={{ maxWidth: "90vw", maxHeight: "82vh", borderRadius: "var(--radius)", boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }} />
                         )}
                         {lightboxMedia.type === "3d" && (
-                            <div style={{ width: "85vw", height: "75vh", background: "#06070a", borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border-hover)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", position: "relative" }}>
-                                {/* @ts-ignore */}
-                                <model-viewer
+                            <div style={{ width: "85vw", height: "75vh" }}>
+                                <Sketchfab3DViewer
                                     src={lightboxMedia.url}
-                                    alt={lightboxMedia.title}
-                                    camera-controls
-                                    auto-rotate
-                                    shadow-intensity="1"
-                                    touch-action="pan-y"
-                                    style={{ width: "100%", height: "100%" }}
+                                    title={lightboxMedia.title}
+                                    autoRotate={true}
+                                    height="100%"
                                 />
                             </div>
                         )}
