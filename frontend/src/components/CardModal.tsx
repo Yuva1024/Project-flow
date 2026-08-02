@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon } from "lucide-react";
+import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2 } from "lucide-react";
 import { Card } from "@/store/board";
 
 const PRIORITY_COLORS: Record<string, string> = { URGENT: "#ef4444", HIGH: "#f59e0b", MEDIUM: "#5f62f1", LOW: "#10b981" };
 const LABEL_PRESETS = ["#5f62f1", "#ef4444", "#10b981", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#84cc16", "#fb923c", "#818cf8"];
+
 
 interface Props { card: Card; workspaceId: string; boardId: string; onClose: () => void; onRefresh: () => void; }
 
@@ -47,6 +48,62 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const [showMemberPicker, setShowMemberPicker] = useState(false);
     const [activity, setActivity] = useState<any[]>([]);
 
+    // 3D Model Viewer Sections State
+    interface Model3DSection { id: string; title: string; modelUrl: string; autoRotate: boolean; }
+    const [model3DSections, setModel3DSections] = useState<Model3DSection[]>([]);
+    const [new3DSectionName, setNew3DSectionName] = useState("");
+    const [show3DSectionForm, setShow3DSectionForm] = useState(false);
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(`card_3d_sections_${card.id}`);
+            if (saved) {
+                setModel3DSections(JSON.parse(saved));
+            } else {
+                setModel3DSections([]);
+            }
+        } catch { }
+    }, [card.id]);
+
+    const save3DSections = (sections: Model3DSection[]) => {
+        setModel3DSections(sections);
+        try {
+            localStorage.setItem(`card_3d_sections_${card.id}`, JSON.stringify(sections));
+        } catch { }
+    };
+
+    const handleCreate3DSection = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!new3DSectionName.trim()) return toast.error("Please enter a name for the 3D model section");
+        const newSec: Model3DSection = {
+            id: Date.now().toString(),
+            title: new3DSectionName.trim(),
+            modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+            autoRotate: true
+        };
+        const updated = [...model3DSections, newSec];
+        save3DSections(updated);
+        setNew3DSectionName("");
+        setShow3DSectionForm(false);
+        toast.success(`Created 3D section "${newSec.title}" below attachments`);
+    };
+
+    const handleDelete3DSection = (secId: string) => {
+        const updated = model3DSections.filter(s => s.id !== secId);
+        save3DSections(updated);
+        toast.success("3D Section deleted");
+    };
+
+    const handleUpdate3DSectionModel = (secId: string, modelUrl: string) => {
+        const updated = model3DSections.map(s => s.id === secId ? { ...s, modelUrl } : s);
+        save3DSections(updated);
+    };
+
+    const handleToggleAutoRotate = (secId: string) => {
+        const updated = model3DSections.map(s => s.id === secId ? { ...s, autoRotate: !s.autoRotate } : s);
+        save3DSections(updated);
+    };
+
     // Attachments & Drag-Drop State
     const [attachments, setAttachments] = useState<any[]>([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -64,8 +121,28 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         setLabels(card.labels || []);
     }, [card.id]);
 
+    // Lightbox & Direct Download state
+    const [lightboxMedia, setLightboxMedia] = useState<{ type: 'image' | 'video' | '3d'; url: string; title: string } | null>(null);
+
+    const forceDownload = async (fileUrl: string, fileName: string) => {
+        try {
+            toast.loading(`Downloading ${fileName}...`, { id: "downloading" });
+            const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(fileUrl)}&name=${encodeURIComponent(fileName)}`;
+            const a = document.createElement('a');
+            a.href = proxyUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            toast.success(`Started downloading ${fileName}`, { id: "downloading" });
+        } catch {
+            window.open(fileUrl, '_blank');
+            toast.dismiss("downloading");
+        }
+    };
+
     const handleFileUpload = async (file: File) => {
-        if (!file) return;
+        if (!file) return null;
         setIsUploading(true);
         const formData = new FormData();
         formData.append('file', file);
@@ -73,10 +150,12 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
             const { data } = await api.post(`${cardBase}/attachments`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            setAttachments([data, ...attachments]);
+            setAttachments(prev => [data, ...prev]);
             toast.success(`Attached "${file.name}"`);
+            return data;
         } catch {
             toast.error("Failed to upload file");
+            return null;
         } finally {
             setIsUploading(false);
         }
@@ -243,296 +322,8 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     
     const progress = (cl: any) => cl.items?.length ? Math.round((cl.items.filter((i: any) => i.isChecked).length / cl.items.length) * 100) : 0;
 
-    return (
-        <div className="overlay">
-            {/* Backdrop closes drawer */}
-            <div className="overlay-backdrop" onClick={handleClose} />
-
-            {/* Modal Sheet Container */}
-            <div className={`drawer-sheet ${isDraggingOver ? 'dragging-over' : ''}`}
-                 onPaste={handlePaste}
-                 onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
-                 onDragLeave={() => setIsDraggingOver(false)}
-                 onDrop={handleDrop}
-                 style={{
-                     position: 'relative',
-                     width: '100%',
-                     maxWidth: '820px',
-                     maxHeight: 'calc(100vh - 48px)',
-                     height: '90vh',
-                     display: 'flex',
-                     flexDirection: 'column',
-                     borderRadius: 'var(--radius-lg)',
-                     overflow: 'hidden'
-                 }}
-            >
-                {isDraggingOver && (
-                    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'rgba(95, 98, 241, 0.15)', backdropFilter: 'blur(2px)', border: '2px dashed var(--accent)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-                        <UploadCloud size={48} style={{ color: 'var(--accent)' }} />
-                        <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent)' }}>Drop files here to upload to Cloudflare R2</span>
-                    </div>
-                )}
-                {/* Header */}
-                <div className="card-modal-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                        {isEditingTitle ? (
-                            <input
-                                type="text"
-                                value={cardTitle}
-                                onChange={(e) => setCardTitle(e.target.value)}
-                                onBlur={saveTitle}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') { setCardTitle(card.title); setIsEditingTitle(false); } }}
-                                style={{ fontSize: 16, fontWeight: 800, width: "90%", padding: "4px 8px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-active)", background: "var(--bg-elevated)" }}
-                                autoFocus
-                            />
-                        ) : (
-                            <h2 onClick={() => setIsEditingTitle(true)} style={{ fontSize: 16.5, fontWeight: 800, cursor: "pointer", margin: 0, letterSpacing: "-0.01em", color: "var(--text-primary)" }} title="Click to edit card title">
-                                {cardTitle}
-                            </h2>
-                        )}
-                        {labels.length > 0 && (
-                            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                                {labels.map((cl: any) => (
-                                    <span key={cl.labelId || cl.label?.id}
-                                          style={{
-                                              fontSize: 9.5, fontWeight: 700, padding: "2px 8px", borderRadius: 4, letterSpacing: "0.02em",
-                                              textTransform: "uppercase", background: (cl.label?.color || "#636b7d") + "15", color: cl.label?.color || "#636b7d",
-                                              border: `1.5px solid ${cl.label?.color}25`
-                                          }}>
-                                        {cl.label?.name}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <button onClick={handleClose}
-                            style={{
-                                width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                                background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms"
-                            }}
-                            onMouseOver={(e) => { e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                            onMouseOut={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = "none"; }}
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
-
-                {/* 2-Column Content */}
-                <div className="card-modal-content" style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
-                    {/* Left Column: Description, Checklists, Comments (62%) */}
-                    <div className="card-modal-left" style={{ flex: 1, padding: "28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, borderRight: "1px solid var(--border)" }}>
-                        {/* Description */}
-                        <div>
-                            <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, color: "var(--text-muted)" }}>Description</h3>
-                            {editingDesc ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} style={{ fontSize: 13, background: "var(--bg-elevated)" }} placeholder="Add a detailed description..." autoFocus />
-                                    <div style={{ display: "flex", gap: 8 }}>
-                                        <button onClick={saveDesc} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }}>Save</button>
-                                        <button onClick={() => { setEditingDesc(false); setDesc(card.description || ""); }} className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}>Cancel</button>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div onClick={() => setEditingDesc(true)}
-                                    style={{
-                                        fontSize: 13, padding: 16, borderRadius: "var(--radius)", cursor: "pointer", minHeight: 70,
-                                        background: "var(--bg-elevated)", border: "1px solid var(--border)", color: desc ? "var(--text-primary)" : "var(--text-muted)",
-                                        lineHeight: 1.6, transition: "border-color 150ms"
-                                    }}
-                                    onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
-                                    onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border)"}
-                                >
-                                    {desc || "Click to add detailed description..."}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Attachments Section */}
-                        <div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                                <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
-                                    <Paperclip size={13} /> Attachments ({attachments.length})
-                                </h3>
-                                <label style={{ cursor: "pointer" }}>
-                                    <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
-                                    <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
-                                        <Plus size={11} /> {isUploading ? 'Uploading...' : 'Add File'}
-                                    </span>
-                                </label>
-                            </div>
-
-                            {/* Drag & Drop Target Area */}
-                            <div
-                                style={{
-                                    border: "2px dashed var(--border)",
-                                    borderRadius: "var(--radius)",
-                                    padding: "16px 20px",
-                                    textAlign: "center",
-                                    background: "var(--bg-elevated)",
-                                    cursor: "pointer",
-                                    transition: "all 150ms",
-                                    marginBottom: 16
-                                }}
-                                onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
-                                onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border)"}
-                            >
-                                <label style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                                    <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
-                                    <UploadCloud size={22} style={{ color: "var(--text-muted)" }} />
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>
-                                        Drag & drop files here, paste from clipboard (<kbd style={{ background: 'var(--bg-card)', padding: '2px 4px', borderRadius: 4 }}>Ctrl+V</kbd>), or <span style={{ color: "var(--accent)" }}>browse</span>
-                                    </span>
-                                </label>
-                            </div>
-
-                            {/* Attachments List */}
-                            {attachments.length > 0 && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 280, overflowY: "auto", paddingRight: 6 }}>
-                                    {attachments.map((att: any) => {
-                                        const isImage = att.mimeType?.startsWith("image/");
-                                        const isVideo = att.mimeType?.startsWith("video/");
-
-                                        return (
-                                            <div key={att.id} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
-                                                {/* Media Preview */}
-                                                {isImage && (
-                                                    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", maxHeight: 240, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                        <img src={att.fileUrl} alt={att.fileName} style={{ maxWidth: "100%", maxHeight: 240, objectFit: "contain" }} />
-                                                    </div>
-                                                )}
-                                                {isVideo && (
-                                                    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", background: "black" }}>
-                                                        <video controls src={att.fileUrl} style={{ width: "100%", maxHeight: 280 }} />
-                                                    </div>
-                                                )}
-
-                                                {/* File Details & Download Row */}
-                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                                                    <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
-                                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent)15", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                                            {isImage ? <ImageIcon size={16} /> : isVideo ? <Video size={16} /> : <FileText size={16} />}
-                                                        </div>
-                                                        <div style={{ overflow: "hidden" }}>
-                                                            <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.fileName}</div>
-                                                            <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
-                                                                {formatFileSize(att.fileSize)} • {new Date(att.createdAt).toLocaleDateString()}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                                                        <a href={att.fileUrl} target="_blank" rel="noopener noreferrer" download={att.fileName} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5, textDecoration: "none" }}>
-                                                            <Download size={12} /> Download
-                                                        </a>
-                                                        <button onClick={() => handleDeleteAttachment(att.id)} style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Delete attachment" onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}>
-                                                            <Trash2 size={13} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Checklists */}
-                        {checklists.length > 0 && (
-                            <div>
-                                <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}><CheckSquare size={12} /> Checklists</h3>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                                    {checklists.map((cl) => (
-                                        <ChecklistSection
-                                            key={cl.id}
-                                            checklist={cl}
-                                            onToggleItem={(itemId, checked) => toggleChecklistItem(cl.id, itemId, checked)}
-                                            onAddItem={(content) => addChecklistItem(cl.id, content)}
-                                            onEditItem={(itemId, content) => editChecklistItem(cl.id, itemId, content)}
-                                            onDeleteItem={(itemId) => deleteChecklistItem(cl.id, itemId)}
-                                            onDelete={() => deleteChecklist(cl.id)}
-                                            onRename={(title) => renameChecklist(cl.id, title)}
-                                            progress={progress(cl)}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Tabs (Comments / Activity) */}
-                        <div className="card-modal-comments" style={{ marginTop: "auto" }}>
-                            <div style={{ display: "flex", gap: 4, marginBottom: 20, padding: 4, borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
-                                {(["comments", "activity"] as const).map(tab => (
-                                    <button key={tab} onClick={() => setActiveTab(tab)}
-                                        style={{
-                                            flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: "var(--radius-sm)",
-                                            textTransform: "capitalize", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                                            background: activeTab === tab ? "var(--bg-card)" : "transparent",
-                                            color: activeTab === tab ? "var(--text-primary)" : "var(--text-secondary)",
-                                            boxShadow: activeTab === tab ? "var(--shadow-sm)" : "none",
-                                            transition: "all 150ms var(--ease)"
-                                        }}>
-                                        {tab === "comments" ? <><MessageSquare size={13} />Comments ({comments.length})</> : <><Activity size={13} />Activity ({activity.length})</>}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {activeTab === "comments" ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                                    <form onSubmit={addComment} style={{ display: "flex", gap: 8 }}>
-                                        <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Write a comment..." style={{ fontSize: 13, background: "var(--bg-elevated)" }} />
-                                        <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: "8px 16px" }}>Send</button>
-                                    </form>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                        {comments.map((c) => (
-                                            <div key={c.id} style={{ padding: "14px 16px", borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
-                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                                        <div style={{ width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 800, background: "var(--accent)", color: "white" }}>{(c.user?.name || "U").charAt(0).toUpperCase()}</div>
-                                                        <span style={{ fontSize: 12.5, fontWeight: 700 }}>{c.user?.name || "User"}</span>
-                                                        <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{new Date(c.createdAt).toLocaleDateString()} at {new Date(c.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
-                                                    </div>
-                                                    <div style={{ display: "flex", gap: 4 }}>
-                                                        <button onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.content); }} style={{ width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", transition: "color 150ms" }} onMouseOver={(e) => e.currentTarget.style.color = "var(--text-primary)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"} title="Edit comment">
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                                        </button>
-                                                        <button onClick={() => deleteComment(c.id)} style={{ width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", transition: "color 150ms" }} onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"} title="Delete comment"><Trash2 size={12} /></button>
-                                                    </div>
-                                                </div>
-                                                {editingCommentId === c.id ? (
-                                                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4, paddingLeft: 34 }}>
-                                                        <input type="text" value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} style={{ fontSize: 13 }} autoFocus />
-                                                        <div style={{ display: "flex", gap: 8 }}>
-                                                            <button onClick={() => saveCommentEdit(c.id)} className="btn-primary" style={{ fontSize: 11, padding: "4px 10px" }}>Save</button>
-                                                            <button onClick={() => setEditingCommentId(null)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 8px" }}>Cancel</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <p style={{ fontSize: 13, paddingLeft: 34, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{c.content}</p>
-                                                )}
-                                            </div>
-                                        ))}
-                                        {comments.length === 0 && <p style={{ fontSize: 12.5, textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>No comments yet</p>}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                    {activity.map((a: any) => (
-                                        <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 10px", fontSize: 12.5, color: "var(--text-secondary)" }}>
-                                            <Activity size={13} style={{ marginTop: 2, flexShrink: 0, color: "var(--accent)" }} />
-                                            <div>
-                                                <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{a.user?.name}</span> {a.action} {a.details && <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>— {a.details}</span>}
-                                                <div style={{ fontSize: 10.5, marginTop: 2, color: "var(--text-muted)" }}>{new Date(a.createdAt).toLocaleString()}</div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {activity.length === 0 && <p style={{ fontSize: 12.5, textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>No activity yet</p>}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right Column: Sidebar Settings Panel (38%) */}
-                    <div className="card-modal-right" style={{ width: 235, padding: "28px 24px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
+    const renderRightPanel = (className: string) => (
+                    <div className={`card-modal-right ${className}`} style={{ width: className.includes('mobile-only') ? "100%" : 235, padding: className.includes('mobile-only') ? "20px 0" : "28px 24px", flexShrink: 0, display: className.includes('mobile-only') ? "none" : "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
                         <div>
                             <p style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 12, color: "var(--text-muted)" }}>Properties</p>
                             
@@ -560,6 +351,37 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             <p style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 12, color: "var(--text-muted)" }}>Manage Card</p>
 
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                {/* 3D Model Viewer Accordion */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                    <button onClick={() => { setShow3DSectionForm(!show3DSectionForm); setShowLabelPicker(false); setShowMemberPicker(false); setShowAddChecklist(false); }}
+                                            style={{ width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: "var(--radius)", fontSize: 12.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", background: show3DSectionForm ? "var(--bg-hover)" : "var(--bg-elevated)", border: show3DSectionForm ? "1px solid var(--border-active)" : "1px solid var(--border)", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms" }}
+                                            onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
+                                            onMouseOut={(e) => e.currentTarget.style.borderColor = show3DSectionForm ? "var(--border-active)" : "var(--border)"}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            <Box size={13} style={{ color: "var(--accent)" }} /> 3D Model Viewer
+                                            {model3DSections.length > 0 && (
+                                                <span style={{ background: "var(--accent)", color: "white", padding: "2px 6px", borderRadius: 10, fontSize: 10, fontWeight: 800 }}>{model3DSections.length}</span>
+                                            )}
+                                        </div>
+                                        {show3DSectionForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    </button>
+                                    {show3DSectionForm && (
+                                        <form onSubmit={handleCreate3DSection} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border-active)", display: "flex", flexDirection: "column", gap: 10 }}>
+                                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--text-secondary)" }}>Asset Section Name</label>
+                                            <input
+                                                type="text"
+                                                value={new3DSectionName}
+                                                onChange={(e) => setNew3DSectionName(e.target.value)}
+                                                placeholder="e.g. Hero Model v1"
+                                                style={{ fontSize: 12, padding: "7px 10px" }}
+                                                autoFocus
+                                            />
+                                            <button type="submit" className="btn-primary" style={{ width: "100%", fontSize: 11.5, padding: "7px 0" }}>
+                                                + Add 3D Section
+                                            </button>
+                                        </form>
+                                    )}
+                                </div>
                                 {/* Labels Accordion */}
                                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                     <button onClick={() => { setShowLabelPicker(!showLabelPicker); setShowMemberPicker(false); setShowAddChecklist(false); }}
@@ -730,8 +552,423 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             <Trash2 size={13} /> Delete Card
                         </button>
                     </div>
+                    );
+
+    return (
+        <div className="overlay">
+            {/* Backdrop closes drawer */}
+            <div className="overlay-backdrop" onClick={handleClose} />
+
+            {/* Modal Sheet Container */}
+            <div className={`drawer-sheet ${isDraggingOver ? 'dragging-over' : ''}`}
+                 onPaste={handlePaste}
+                 onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+                 onDragLeave={() => setIsDraggingOver(false)}
+                 onDrop={handleDrop}
+                 style={{
+                     position: 'relative',
+                     width: '100%',
+                     maxWidth: '820px',
+                     maxHeight: 'calc(100vh - 48px)',
+                     height: '90vh',
+                     display: 'flex',
+                     flexDirection: 'column',
+                     borderRadius: 'var(--radius-lg)',
+                     overflow: 'hidden'
+                 }}
+            >
+                {isDraggingOver && (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 50, background: 'rgba(95, 98, 241, 0.15)', backdropFilter: 'blur(2px)', border: '2px dashed var(--accent)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
+                        <UploadCloud size={48} style={{ color: 'var(--accent)' }} />
+                        <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--accent)' }}>Drop files here to upload to Cloudflare R2</span>
+                    </div>
+                )}
+                {/* Header */}
+                <div className="card-modal-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                        {isEditingTitle ? (
+                            <input
+                                type="text"
+                                value={cardTitle}
+                                onChange={(e) => setCardTitle(e.target.value)}
+                                onBlur={saveTitle}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') { setCardTitle(card.title); setIsEditingTitle(false); } }}
+                                style={{ fontSize: 16, fontWeight: 800, width: "90%", padding: "4px 8px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-active)", background: "var(--bg-elevated)" }}
+                                autoFocus
+                            />
+                        ) : (
+                            <h2 onClick={() => setIsEditingTitle(true)} style={{ fontSize: 16.5, fontWeight: 800, cursor: "pointer", margin: 0, letterSpacing: "-0.01em", color: "var(--text-primary)" }} title="Click to edit card title">
+                                {cardTitle}
+                            </h2>
+                        )}
+                        {labels.length > 0 && (
+                            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                                {labels.map((cl: any) => (
+                                    <span key={cl.labelId || cl.label?.id}
+                                          style={{
+                                              fontSize: 9.5, fontWeight: 700, padding: "2px 8px", borderRadius: 4, letterSpacing: "0.02em",
+                                              textTransform: "uppercase", background: (cl.label?.color || "#636b7d") + "15", color: cl.label?.color || "#636b7d",
+                                              border: `1.5px solid ${cl.label?.color}25`
+                                          }}>
+                                        {cl.label?.name}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <button onClick={handleClose}
+                            style={{
+                                width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                                background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms"
+                            }}
+                            onMouseOver={(e) => { e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+                            onMouseOut={(e) => { e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = "none"; }}
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
+                {/* 2-Column Content */}
+                <div className="card-modal-content" style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+                    {/* Left Column: Description, Checklists, Comments (62%) */}
+                    <div className="card-modal-left" style={{ flex: 1, padding: "28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, borderRight: "1px solid var(--border)" }}>
+                        {/* Description */}
+                        <div>
+                            <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, color: "var(--text-muted)" }}>Description</h3>
+                            {editingDesc ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} style={{ fontSize: 13, background: "var(--bg-elevated)" }} placeholder="Add a detailed description..." autoFocus />
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                        <button onClick={saveDesc} className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }}>Save</button>
+                                        <button onClick={() => { setEditingDesc(false); setDesc(card.description || ""); }} className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}>Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div onClick={() => setEditingDesc(true)}
+                                    style={{
+                                        fontSize: 13, padding: 16, borderRadius: "var(--radius)", cursor: "pointer", minHeight: 70,
+                                        background: "var(--bg-elevated)", border: "1px solid var(--border)", color: desc ? "var(--text-primary)" : "var(--text-muted)",
+                                        lineHeight: 1.6, transition: "border-color 150ms"
+                                    }}
+                                    onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
+                                    onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+                                >
+                                    {desc || "Click to add detailed description..."}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Attachments Section */}
+                        <div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                                <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+                                    <Paperclip size={13} /> Attachments ({attachments.length})
+                                </h3>
+                                <label style={{ cursor: "pointer" }}>
+                                    <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
+                                    <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
+                                        <Plus size={11} /> {isUploading ? 'Uploading...' : 'Add File'}
+                                    </span>
+                                </label>
+                            </div>
+
+                            {/* Drag & Drop Target Area */}
+                            <div
+                                style={{
+                                    border: "2px dashed var(--border)",
+                                    borderRadius: "var(--radius)",
+                                    padding: "16px 20px",
+                                    textAlign: "center",
+                                    background: "var(--bg-elevated)",
+                                    cursor: "pointer",
+                                    transition: "all 150ms",
+                                    marginBottom: 16
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.borderColor = "var(--border-active)"}
+                                onMouseOut={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+                            >
+                                <label style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                                    <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
+                                    <UploadCloud size={22} style={{ color: "var(--text-muted)" }} />
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>
+                                        Drag & drop files here, paste from clipboard (<kbd style={{ background: 'var(--bg-card)', padding: '2px 4px', borderRadius: 4 }}>Ctrl+V</kbd>), or <span style={{ color: "var(--accent)" }}>browse</span>
+                                    </span>
+                                </label>
+                            </div>
+
+                            {/* Attachments List */}
+                            {attachments.length > 0 && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 280, overflowY: "auto", paddingRight: 6 }}>
+                                    {attachments.map((att: any) => {
+                                        const isImage = att.mimeType?.startsWith("image/");
+                                        const isVideo = att.mimeType?.startsWith("video/");
+
+                                        return (
+                                            <div key={att.id} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                                                {/* Media Preview */}
+                                                {isImage && (
+                                                    <div onClick={() => setLightboxMedia({ type: 'image', url: att.fileUrl, title: att.fileName })}
+                                                         style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", maxHeight: 240, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                                                         title="Click to preview fullscreen">
+                                                        <img src={att.fileUrl} alt={att.fileName} style={{ maxWidth: "100%", maxHeight: 240, objectFit: "contain" }} />
+                                                    </div>
+                                                )}
+                                                {isVideo && (
+                                                    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", background: "black" }}>
+                                                        <video controls src={att.fileUrl} style={{ width: "100%", maxHeight: 280 }} />
+                                                    </div>
+                                                )}
+
+                                                {/* File Details & Download Row */}
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
+                                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent)15", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                                            {isImage ? <ImageIcon size={16} /> : isVideo ? <Video size={16} /> : <FileText size={16} />}
+                                                        </div>
+                                                        <div style={{ overflow: "hidden" }}>
+                                                            <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.fileName}</div>
+                                                            <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+                                                                {formatFileSize(att.fileSize)} • {new Date(att.createdAt).toLocaleDateString()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                                        <button onClick={() => forceDownload(att.fileUrl, att.fileName)} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
+                                                            <Download size={12} /> Download
+                                                        </button>
+                                                        <button onClick={() => handleDeleteAttachment(att.id)} style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Delete attachment" onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}>
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 3D Model Sections (placed below Attachments) */}
+                        {model3DSections.map((sec) => (
+                            <div key={sec.id} style={{ borderRadius: "var(--radius-lg)", padding: 18, background: "var(--bg-elevated)", border: "1px solid var(--border-hover)", display: "flex", flexDirection: "column", gap: 14 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                    <h3 style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                                        <Box size={15} style={{ color: "var(--accent)" }} /> 3D Model: {sec.title}
+                                    </h3>
+                                    <button onClick={() => handleDelete3DSection(sec.id)}
+                                            style={{ width: 26, height: 26, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", transition: "color 150ms" }}
+                                            onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"}
+                                            onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                                            title="Delete 3D section">
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
+
+                                {/* Controls & Upload Row */}
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                                    <div style={{ flex: 1, minWidth: 180 }}>
+                                        <select value={sec.modelUrl} onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)} style={{ fontSize: 12, padding: "6px 10px" }}>
+                                            <option value="">Select a 3D Model</option>
+                                            {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).length > 0 && (
+                                                <optgroup label="Uploaded 3D Files">
+                                                    {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).map((a: any) => (
+                                                        <option key={a.id} value={a.fileUrl}>🎮 {a.fileName}</option>
+                                                    ))}
+                                                </optgroup>
+                                            )}
+                                        </select>
+                                    </div>
+
+                                    <label style={{ cursor: "pointer" }}>
+                                        <input type="file" accept=".glb,.gltf,.obj" onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                handleFileUpload(file).then((att) => {
+                                                    if (att?.fileUrl) {
+                                                        handleUpdate3DSectionModel(sec.id, att.fileUrl);
+                                                        toast.success(`Uploaded ${file.name} to 3D section!`);
+                                                    }
+                                                });
+                                            }
+                                        }} style={{ display: "none" }} />
+                                        <span className="btn-secondary" style={{ fontSize: 11.5, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                                            <UploadCloud size={13} /> Upload .GLB / .GLTF
+                                        </span>
+                                    </label>
+                                </div>
+
+                                {/* Interactive 3D Canvas */}
+                                <div style={{ borderRadius: "var(--radius)", overflow: "hidden", background: "#06070a", border: "1px solid var(--border)", position: "relative" }}>
+                                    {/* @ts-ignore */}
+                                    <model-viewer
+                                        src={sec.modelUrl}
+                                        alt={`3D Model - ${sec.title}`}
+                                        camera-controls
+                                        auto-rotate={sec.autoRotate ? true : undefined}
+                                        shadow-intensity="1"
+                                        touch-action="pan-y"
+                                        style={{ width: "100%", height: "260px", display: "block" }}
+                                    />
+
+                                    {/* Control Badges */}
+                                    <div style={{ position: "absolute", bottom: 10, right: 10, display: "flex", gap: 6, zIndex: 10 }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleToggleAutoRotate(sec.id)}
+                                            style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, background: sec.autoRotate ? "var(--accent)" : "rgba(0,0,0,0.7)", color: "white", border: "none", cursor: "pointer", backdropFilter: "blur(4px)" }}
+                                            title="Toggle Auto Rotation">
+                                            {sec.autoRotate ? "Pause Spin" : "Auto Spin"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLightboxMedia({ type: '3d', url: sec.modelUrl, title: `3D Model — ${sec.title}` })}
+                                            style={{ padding: "5px 10px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, background: "rgba(0,0,0,0.7)", color: "white", border: "none", cursor: "pointer", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", gap: 4 }}
+                                            title="Open Fullscreen 3D Model">
+                                            <Maximize2 size={11} /> Fullscreen
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* Checklists */}
+                        {checklists.length > 0 && (
+                            <div>
+                                <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}><CheckSquare size={12} /> Checklists</h3>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                                    {checklists.map((cl) => (
+                                        <ChecklistSection
+                                            key={cl.id}
+                                            checklist={cl}
+                                            onToggleItem={(itemId, checked) => toggleChecklistItem(cl.id, itemId, checked)}
+                                            onAddItem={(content) => addChecklistItem(cl.id, content)}
+                                            onEditItem={(itemId, content) => editChecklistItem(cl.id, itemId, content)}
+                                            onDeleteItem={(itemId) => deleteChecklistItem(cl.id, itemId)}
+                                            onDelete={() => deleteChecklist(cl.id)}
+                                            onRename={(title) => renameChecklist(cl.id, title)}
+                                            progress={progress(cl)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {renderRightPanel("mobile-only")}
+
+                        {/* Tabs (Comments / Activity) */}
+                        <div className="card-modal-comments" style={{ marginTop: "auto" }}>
+                            <div style={{ display: "flex", gap: 4, marginBottom: 20, padding: 4, borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
+                                {(["comments", "activity"] as const).map(tab => (
+                                    <button key={tab} onClick={() => setActiveTab(tab)}
+                                        style={{
+                                            flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 700, borderRadius: "var(--radius-sm)",
+                                            textTransform: "capitalize", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                                            background: activeTab === tab ? "var(--bg-card)" : "transparent",
+                                            color: activeTab === tab ? "var(--text-primary)" : "var(--text-secondary)",
+                                            boxShadow: activeTab === tab ? "var(--shadow-sm)" : "none",
+                                            transition: "all 150ms var(--ease)"
+                                        }}>
+                                        {tab === "comments" ? <><MessageSquare size={13} />Comments ({comments.length})</> : <><Activity size={13} />Activity ({activity.length})</>}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {activeTab === "comments" ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                                    <form onSubmit={addComment} style={{ display: "flex", gap: 8 }}>
+                                        <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Write a comment..." style={{ fontSize: 13, background: "var(--bg-elevated)" }} />
+                                        <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: "8px 16px" }}>Send</button>
+                                    </form>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                        {comments.map((c) => (
+                                            <div key={c.id} style={{ padding: "14px 16px", borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                                        <div style={{ width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 800, background: "var(--accent)", color: "white" }}>{(c.user?.name || "U").charAt(0).toUpperCase()}</div>
+                                                        <span style={{ fontSize: 12.5, fontWeight: 700 }}>{c.user?.name || "User"}</span>
+                                                        <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{new Date(c.createdAt).toLocaleDateString()} at {new Date(c.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    </div>
+                                                    <div style={{ display: "flex", gap: 4 }}>
+                                                        <button onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.content); }} style={{ width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", transition: "color 150ms" }} onMouseOver={(e) => e.currentTarget.style.color = "var(--text-primary)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"} title="Edit comment">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                                        </button>
+                                                        <button onClick={() => deleteComment(c.id)} style={{ width: 24, height: 24, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", transition: "color 150ms" }} onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"} title="Delete comment"><Trash2 size={12} /></button>
+                                                    </div>
+                                                </div>
+                                                {editingCommentId === c.id ? (
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4, paddingLeft: 34 }}>
+                                                        <input type="text" value={editingCommentText} onChange={(e) => setEditingCommentText(e.target.value)} style={{ fontSize: 13 }} autoFocus />
+                                                        <div style={{ display: "flex", gap: 8 }}>
+                                                            <button onClick={() => saveCommentEdit(c.id)} className="btn-primary" style={{ fontSize: 11, padding: "4px 10px" }}>Save</button>
+                                                            <button onClick={() => setEditingCommentId(null)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 8px" }}>Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p style={{ fontSize: 13, paddingLeft: 34, color: "var(--text-secondary)", margin: 0, lineHeight: 1.5 }}>{c.content}</p>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {comments.length === 0 && <p style={{ fontSize: 12.5, textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>No comments yet</p>}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                    {activity.map((a: any) => (
+                                        <div key={a.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "8px 10px", fontSize: 12.5, color: "var(--text-secondary)" }}>
+                                            <Activity size={13} style={{ marginTop: 2, flexShrink: 0, color: "var(--accent)" }} />
+                                            <div>
+                                                <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{a.user?.name}</span> {a.action} {a.details && <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>— {a.details}</span>}
+                                                <div style={{ fontSize: 10.5, marginTop: 2, color: "var(--text-muted)" }}>{new Date(a.createdAt).toLocaleString()}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {activity.length === 0 && <p style={{ fontSize: 12.5, textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>No activity yet</p>}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {renderRightPanel("desktop-only")}
                 </div>
             </div>
+
+            {/* Media Preview Lightbox Popup */}
+            {lightboxMedia && (
+                <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0, 0, 0, 0.88)", backdropFilter: "blur(16px)" }}>
+                    <div style={{ position: "absolute", top: 20, right: 24, display: "flex", alignItems: "center", gap: 12, zIndex: 1010 }}>
+                        <button onClick={() => forceDownload(lightboxMedia.url, lightboxMedia.title || "media-asset")} className="btn-primary" style={{ padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                            <Download size={14} /> Download
+                        </button>
+                        <button onClick={() => setLightboxMedia(null)} className="btn-ghost" style={{ padding: 8, borderRadius: "50%", background: "rgba(255,255,255,0.15)", color: "white" }}>
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <div style={{ maxWidth: "90vw", maxHeight: "88vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                        {lightboxMedia.type === "image" && (
+                            <img src={lightboxMedia.url} alt={lightboxMedia.title} style={{ maxWidth: "90vw", maxHeight: "82vh", objectFit: "contain", borderRadius: "var(--radius)", boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }} />
+                        )}
+                        {lightboxMedia.type === "video" && (
+                            <video controls autoPlay src={lightboxMedia.url} style={{ maxWidth: "90vw", maxHeight: "82vh", borderRadius: "var(--radius)", boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }} />
+                        )}
+                        {lightboxMedia.type === "3d" && (
+                            <div style={{ width: "85vw", height: "75vh", background: "#06070a", borderRadius: "var(--radius-lg)", overflow: "hidden", border: "1px solid var(--border-hover)", boxShadow: "0 24px 80px rgba(0,0,0,0.9)", position: "relative" }}>
+                                {/* @ts-ignore */}
+                                <model-viewer
+                                    src={lightboxMedia.url}
+                                    alt={lightboxMedia.title}
+                                    camera-controls
+                                    auto-rotate
+                                    shadow-intensity="1"
+                                    touch-action="pan-y"
+                                    style={{ width: "100%", height: "100%" }}
+                                />
+                            </div>
+                        )}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginTop: 14 }}>{lightboxMedia.title}</div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

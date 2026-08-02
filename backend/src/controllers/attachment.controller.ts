@@ -69,7 +69,7 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
         }
 
         // Try deleting from R2 or local storage
-        await deleteFile(attachment.fileUrl.split('/').pop() || '');
+        await deleteFile(attachment.fileUrl);
 
         await prisma.attachment.delete({
             where: { id: attachmentId },
