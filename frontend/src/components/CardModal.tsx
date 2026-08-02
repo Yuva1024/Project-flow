@@ -273,7 +273,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                     </div>
                 )}
                 {/* Header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: "1px solid var(--border)" }}>
+                <div className="card-modal-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 28px", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                         {isEditingTitle ? (
                             <input

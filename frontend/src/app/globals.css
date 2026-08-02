@@ -461,30 +461,46 @@ select option {
 /* ---- Mobile & Responsive Enhancements ---- */
 @media (max-width: 768px) {
   .overlay {
-    padding: 6px !important;
+    padding: 0 !important;
   }
   
   .drawer-sheet {
     max-width: 100% !important;
-    height: 100vh !important;
-    max-height: 100vh !important;
+    width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
+    border: none !important;
   }
   
+  .card-modal-header {
+    padding: 16px 18px !important;
+  }
+
   .card-modal-content {
     flex-direction: column !important;
     overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    height: 100% !important;
+    flex: 1 !important;
   }
   
   .card-modal-left {
+    flex: none !important;
     border-right: none !important;
     border-bottom: 1px solid var(--border) !important;
-    padding: 16px !important;
+    padding: 20px 16px !important;
+    overflow-y: visible !important;
+    height: auto !important;
   }
   
   .card-modal-right {
+    flex: none !important;
     width: 100% !important;
-    padding: 16px !important;
+    padding: 20px 16px 80px 16px !important;
+    overflow-y: visible !important;
+    height: auto !important;
   }
 
   .dashboard-container {
