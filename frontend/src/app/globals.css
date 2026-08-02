@@ -484,23 +484,42 @@ select option {
     -webkit-overflow-scrolling: touch;
     height: 100% !important;
     flex: 1 !important;
+    padding: 16px !important;
+    gap: 20px !important;
   }
   
   .card-modal-left {
+    display: contents !important;
+  }
+  
+  .card-modal-left > div:nth-child(1) {
+    order: 1 !important;
+  }
+
+  .card-modal-left > div:nth-child(2) {
+    order: 2 !important;
+  }
+
+  .card-modal-left > div:nth-child(3) {
+    order: 3 !important;
+  }
+
+  .card-modal-right {
+    order: 10 !important;
     flex: none !important;
-    border-right: none !important;
+    width: 100% !important;
+    padding: 20px 0 !important;
+    border-top: 1px solid var(--border) !important;
     border-bottom: 1px solid var(--border) !important;
-    padding: 20px 16px !important;
+    border-right: none !important;
     overflow-y: visible !important;
     height: auto !important;
   }
-  
-  .card-modal-right {
-    flex: none !important;
-    width: 100% !important;
-    padding: 20px 16px 80px 16px !important;
-    overflow-y: visible !important;
-    height: auto !important;
+
+  .card-modal-comments {
+    order: 20 !important;
+    margin-top: 10px !important;
+    padding-bottom: 60px !important;
   }
 
   .dashboard-container {

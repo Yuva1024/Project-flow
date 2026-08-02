@@ -459,7 +459,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         )}
 
                         {/* Tabs (Comments / Activity) */}
-                        <div style={{ marginTop: "auto" }}>
+                        <div className="card-modal-comments" style={{ marginTop: "auto" }}>
                             <div style={{ display: "flex", gap: 4, marginBottom: 20, padding: 4, borderRadius: "var(--radius)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
                                 {(["comments", "activity"] as const).map(tab => (
                                     <button key={tab} onClick={() => setActiveTab(tab)}
