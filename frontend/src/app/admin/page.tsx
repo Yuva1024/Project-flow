@@ -251,8 +251,9 @@ export default function AdminPage() {
                                     </div>
                                 </div>
 
-                                <div className="glass-panel" style={{ borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden" }}>
-                                    {/* Table Header */}
+                                <div className="glass-panel responsive-table-wrapper" style={{ borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden" }}>
+                                    <div>
+                                        {/* Table Header */}
                                     <div style={{
                                         display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1fr 80px",
                                         padding: "12px 20px", background: "var(--bg-elevated)",
@@ -325,6 +326,7 @@ export default function AdminPage() {
                                     {filteredUsers.length === 0 && (
                                         <p style={{ padding: "32px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No users found</p>
                                     )}
+                                    </div>
                                 </div>
                             </div>
                         )}

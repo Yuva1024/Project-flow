@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useBoardStore } from "@/store/board";
 import toast from "react-hot-toast";
-import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield } from "lucide-react";
+import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield, Menu } from "lucide-react";
 import WorkspaceMembersModal from "@/components/WorkspaceMembersModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
 import { useTheme } from "@/hooks/useTheme";
@@ -18,6 +18,7 @@ export default function DashboardPage() {
         updateWorkspace, deleteWorkspace, updateBoard, deleteBoard
     } = useBoardStore();
 
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [showCreateWs, setShowCreateWs] = useState(false);
     const [showCreateBoard, setShowCreateBoard] = useState(false);
     const [showMembers, setShowMembers] = useState(false);
@@ -143,24 +144,34 @@ export default function DashboardPage() {
     );
 
     return (
-        <div style={{ minHeight: "100vh", display: "flex", background: "transparent", color: "var(--text-primary)" }}>
+        <div className="dashboard-container" style={{ minHeight: "100vh", display: "flex", background: "transparent", color: "var(--text-primary)" }}>
+            {/* Mobile Backdrop */}
+            {mobileMenuOpen && (
+                <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />
+            )}
+
             {/* Sidebar */}
-            <aside style={{
+            <aside className={`sidebar-offcanvas ${mobileMenuOpen ? 'open' : ''}`} style={{
                 width: 270, flexShrink: 0, display: "flex", flexDirection: "column",
                 background: "var(--bg-surface)", borderRight: "1px solid var(--border)",
                 backdropFilter: "blur(24px) saturate(140%)"
             }}>
                 {/* Brand */}
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "24px 28px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{
-                        width: 34, height: 34, borderRadius: 9,
-                        background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)"
-                    }}>
-                        <FolderKanban size={15} color="white" />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{
+                            width: 34, height: 34, borderRadius: 9,
+                            background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)"
+                        }}>
+                            <FolderKanban size={15} color="white" />
+                        </div>
+                        <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" }}>ProjectFlow</span>
                     </div>
-                    <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" }}>ProjectFlow</span>
+                    <button onClick={() => setMobileMenuOpen(false)} className="btn-ghost" style={{ padding: 6, display: "flex", alignItems: "center" }}>
+                        <X size={16} />
+                    </button>
                 </div>
 
                 {/* Workspaces Section */}
@@ -189,7 +200,7 @@ export default function DashboardPage() {
                         {workspaces.map((ws) => {
                             const active = currentWorkspace?.id === ws.id;
                             return (
-                                <button key={ws.id} onClick={() => setCurrentWorkspace(ws)}
+                                <button key={ws.id} onClick={() => { setCurrentWorkspace(ws); setMobileMenuOpen(false); }}
                                     style={{
                                         width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: "var(--radius)",
                                         display: "flex", alignItems: "center", gap: 12, cursor: "pointer",
@@ -259,25 +270,32 @@ export default function DashboardPage() {
             {/* Main Area */}
             <main style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", background: "transparent" }}>
                 {/* Header */}
-                <div style={{ padding: "40px 48px 24px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 32 }}>
+                <div className="dashboard-header" style={{ padding: "32px 40px 24px", borderBottom: "1px solid var(--border)" }}>
+                    {/* Mobile Menu Button Row */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }} className="md:hidden">
+                        <button onClick={() => setMobileMenuOpen(true)} className="btn-ghost" style={{ padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                            <Menu size={16} /> Workspaces
+                        </button>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
                         <div>
                             {currentWorkspace ? (
                                 editingWsId === currentWorkspace.id ? (
-                                    <form onSubmit={handleRenameWorkspace} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <form onSubmit={handleRenameWorkspace} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                         <input
                                             type="text"
                                             value={editWsName}
                                             onChange={(e) => setEditWsName(e.target.value)}
-                                            style={{ fontSize: 24, fontWeight: 800, padding: "6px 12px", width: "280px", borderRadius: "var(--radius)", border: "1px solid var(--border-active)", background: "var(--bg-card)" }}
+                                            style={{ fontSize: 20, fontWeight: 800, padding: "6px 12px", width: "220px", borderRadius: "var(--radius)", border: "1px solid var(--border-active)", background: "var(--bg-card)" }}
                                             autoFocus
                                         />
-                                        <button type="submit" className="btn-primary" style={{ padding: "8px 16px" }}>Save</button>
-                                        <button type="button" onClick={() => setEditingWsId(null)} className="btn-ghost" style={{ padding: "8px 16px" }}>Cancel</button>
+                                        <button type="submit" className="btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>Save</button>
+                                        <button type="button" onClick={() => setEditingWsId(null)} className="btn-ghost" style={{ padding: "6px 12px", fontSize: 12 }}>Cancel</button>
                                     </form>
                                 ) : (
                                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                        <h1 style={{ fontSize: 25, fontWeight: 850, letterSpacing: "-0.03em", margin: 0 }}>{currentWorkspace.name}</h1>
+                                        <h1 style={{ fontSize: 22, fontWeight: 850, letterSpacing: "-0.03em", margin: 0 }}>{currentWorkspace.name}</h1>
                                         {currentWorkspace.ownerId === user?.id && (
                                             <button
                                                 onClick={() => {
@@ -295,18 +313,18 @@ export default function DashboardPage() {
                                     </div>
                                 )
                             ) : (
-                                <h1 style={{ fontSize: 25, fontWeight: 850, letterSpacing: "-0.03em", margin: 0 }}>Overview</h1>
+                                <h1 style={{ fontSize: 22, fontWeight: 850, letterSpacing: "-0.03em", margin: 0 }}>Overview</h1>
                             )}
                         </div>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                             <button onClick={toggleTheme} className="btn-ghost" style={{ padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
                                 {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
                             </button>
                             {user?.isAdmin && (
                                 <button onClick={() => router.push("/admin")} className="btn-ghost"
                                     style={{
-                                        padding: "7px 14px", fontSize: 12, fontWeight: 700,
+                                        padding: "7px 12px", fontSize: 12, fontWeight: 700,
                                         display: "flex", alignItems: "center", gap: 6,
                                         background: "rgba(239, 68, 68, 0.08)",
                                         border: "1px solid rgba(239, 68, 68, 0.2)",
@@ -321,15 +339,15 @@ export default function DashboardPage() {
                             <NotificationDropdown />
                             {currentWorkspace && (
                                 <>
-                                    <button onClick={() => setShowMembers(true)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12.5 }}><Users size={14} /> Members</button>
+                                    <button onClick={() => setShowMembers(true)} className="btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }}><Users size={13} /> Members</button>
                                     {currentWorkspace.ownerId === user?.id && (
-                                        <button onClick={() => setShowDeleteWsModal(true)} className="btn-ghost" style={{ color: "var(--danger)", border: "1px solid rgba(239, 68, 68, 0.15)", padding: "8px 14px", fontSize: 12.5 }}
+                                        <button onClick={() => setShowDeleteWsModal(true)} className="btn-ghost" style={{ color: "var(--danger)", border: "1px solid rgba(239, 68, 68, 0.15)", padding: "7px 12px", fontSize: 12 }}
                                                 onMouseOver={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.06)"}
                                                 onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
-                                            Delete Workspace
+                                            Delete
                                         </button>
                                     )}
-                                    <button onClick={() => setShowCreateBoard(true)} className="btn-primary" style={{ padding: "8px 16px", fontSize: 12.5 }}><Plus size={14} /> New Board</button>
+                                    <button onClick={() => setShowCreateBoard(true)} className="btn-primary" style={{ padding: "7px 14px", fontSize: 12 }}><Plus size={13} /> New Board</button>
                                 </>
                             )}
                         </div>

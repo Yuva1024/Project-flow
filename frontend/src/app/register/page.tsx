@@ -50,7 +50,7 @@ export default function RegisterPage() {
             </div>
 
             {/* Content card */}
-            <div className="glass-panel" style={{
+            <div className="glass-panel auth-card-padding" style={{
                 position: "relative", zIndex: 1, width: "100%", maxWidth: 440,
                 borderRadius: "var(--radius-xl)", padding: "48px 40px",
                 boxShadow: "var(--shadow-xl)", border: "1px solid var(--border)",

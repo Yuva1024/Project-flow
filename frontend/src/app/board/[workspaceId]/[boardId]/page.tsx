@@ -366,9 +366,9 @@ export default function BoardPage() {
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "transparent", color: "var(--text-primary)" }}>
             {/* Header */}
             <header style={{ 
-                display: "flex", alignItems: "center", gap: 16, padding: "14px 28px", flexShrink: 0, 
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", flexShrink: 0, 
                 background: "var(--bg-surface)", borderBottom: "1px solid var(--border)",
-                backdropFilter: "blur(20px) saturate(140%)"
+                backdropFilter: "blur(20px) saturate(140%)", flexWrap: "wrap"
             }}>
                 <button onClick={() => router.push("/dashboard")}
                         style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms var(--ease)" }}
@@ -377,8 +377,8 @@ export default function BoardPage() {
                 >
                     <ArrowLeft size={16} />
                 </button>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 3, height: 16, borderRadius: 1.5, background: "var(--accent)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+                    <div style={{ width: 3, height: 16, borderRadius: 1.5, background: "var(--accent)", flexShrink: 0 }} />
                     {isEditingBoardName ? (
                         <input
                             type="text"
@@ -386,13 +386,13 @@ export default function BoardPage() {
                             onChange={(e) => setBoardName(e.target.value)}
                             onBlur={handleSaveBoardName}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleSaveBoardName(); if (e.key === 'Escape') { setBoardName(currentBoard.title); setIsEditingBoardName(false); } }}
-                            style={{ fontSize: 15, fontWeight: 800, padding: "4px 8px", borderRadius: "var(--radius-sm)", width: "220px", background: "var(--bg-elevated)", border: "1px solid var(--border-active)" }}
+                            style={{ fontSize: 15, fontWeight: 800, padding: "4px 8px", borderRadius: "var(--radius-sm)", width: "180px", background: "var(--bg-elevated)", border: "1px solid var(--border-active)" }}
                             autoFocus
                         />
                     ) : (
                         <h1
                             onClick={() => { setIsEditingBoardName(true); setBoardName(currentBoard.title); }}
-                            style={{ fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em", cursor: "pointer", margin: 0 }}
+                            style={{ fontSize: 15.5, fontWeight: 800, letterSpacing: "-0.02em", cursor: "pointer", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                             title="Click to rename board"
                         >
                             {currentBoard.title}
@@ -400,7 +400,7 @@ export default function BoardPage() {
                     )}
                 </div>
 
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
                     <button onClick={toggleTheme} className="btn-ghost" style={{ padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }} title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
                         {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
                     </button>
@@ -408,11 +408,11 @@ export default function BoardPage() {
                     <button
                         onClick={() => setShowDeleteBoardModal(true)}
                         className="btn-ghost"
-                        style={{ color: "var(--danger)", border: "1px solid rgba(239, 68, 68, 0.15)", padding: "7px 14px", fontSize: 12.5 }}
+                        style={{ color: "var(--danger)", border: "1px solid rgba(239, 68, 68, 0.15)", padding: "6px 12px", fontSize: 12 }}
                         onMouseOver={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.06)"}
                         onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
                     >
-                        Delete Board
+                        Delete
                     </button>
                 </div>
             </header>
@@ -421,12 +421,12 @@ export default function BoardPage() {
             <DragDropContext onDragEnd={onDragEnd}>
                 <Droppable droppableId="board" type="LIST" direction="horizontal">
                     {(provided) => (
-                        <div ref={provided.innerRef} {...provided.droppableProps}
+                        <div ref={provided.innerRef} {...provided.droppableProps} className="kanban-board-scroll"
                             style={{ flex: 1, display: "flex", gap: 20, padding: 24, overflowX: "auto", alignItems: "flex-start" }}>
                             {currentBoard.lists.map((list, index) => (
                                 <Draggable key={list.id} draggableId={list.id} index={index}>
                                     {(providedDrag) => (
-                                        <div ref={providedDrag.innerRef} {...providedDrag.draggableProps} {...providedDrag.dragHandleProps}>
+                                        <div ref={providedDrag.innerRef} {...providedDrag.draggableProps} {...providedDrag.dragHandleProps} className="kanban-list-column">
                                             <ListColumn
                                                 list={list}
                                                 workspaceId={wId}
@@ -442,7 +442,7 @@ export default function BoardPage() {
                             {provided.placeholder}
 
                             {/* Add List */}
-                            <div style={{ flexShrink: 0, width: 285 }}>
+                            <div className="kanban-list-column" style={{ flexShrink: 0, width: 285 }}>
                                 {showAddList ? (
                                     <form onSubmit={addList} style={{ borderRadius: "var(--radius-lg)", padding: 14, background: "var(--bg-surface)", border: "1px solid var(--border-hover)", boxShadow: "var(--shadow)" }}>
                                         <input type="text" value={listTitle} onChange={(e) => setListTitle(e.target.value)} placeholder="List title..." style={{ fontSize: 13, marginBottom: 10, padding: "8px 12px" }} autoFocus />

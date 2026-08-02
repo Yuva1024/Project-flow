@@ -457,3 +457,96 @@ select option {
 .light-theme hr {
   border-top-color: var(--border) !important;
 }
+
+/* ---- Mobile & Responsive Enhancements ---- */
+@media (max-width: 768px) {
+  .overlay {
+    padding: 6px !important;
+  }
+  
+  .drawer-sheet {
+    max-width: 100% !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  
+  .card-modal-content {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+  
+  .card-modal-left {
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 16px !important;
+  }
+  
+  .card-modal-right {
+    width: 100% !important;
+    padding: 16px !important;
+  }
+
+  .dashboard-container {
+    flex-direction: column !important;
+  }
+
+  .sidebar-offcanvas {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 150;
+    width: 280px !important;
+    transform: translateX(-100%);
+    transition: transform 300ms var(--ease);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .sidebar-offcanvas.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 140;
+  }
+
+  .kanban-board-scroll {
+    padding: 12px 10px !important;
+    gap: 12px !important;
+    overflow-x: auto !important;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kanban-list-column {
+    min-width: 85vw !important;
+    max-width: 85vw !important;
+    scroll-snap-align: center;
+  }
+
+  .responsive-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .responsive-table-wrapper > div {
+    min-width: 650px;
+  }
+
+  .dashboard-header {
+    padding: 16px 20px !important;
+  }
+
+  .dashboard-main-padding {
+    padding: 16px !important;
+  }
+
+  .auth-card-padding {
+    padding: 32px 20px !important;
+  }
+}

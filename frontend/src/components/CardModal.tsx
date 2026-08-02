@@ -318,9 +318,9 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                 </div>
 
                 {/* 2-Column Content */}
-                <div style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+                <div className="card-modal-content" style={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
                     {/* Left Column: Description, Checklists, Comments (62%) */}
-                    <div style={{ flex: 1, padding: "28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, borderRight: "1px solid var(--border)" }}>
+                    <div className="card-modal-left" style={{ flex: 1, padding: "28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 28, borderRight: "1px solid var(--border)" }}>
                         {/* Description */}
                         <div>
                             <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, color: "var(--text-muted)" }}>Description</h3>
@@ -532,7 +532,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                     </div>
 
                     {/* Right Column: Sidebar Settings Panel (38%) */}
-                    <div style={{ width: 235, padding: "28px 24px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
+                    <div className="card-modal-right" style={{ width: 235, padding: "28px 24px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
                         <div>
                             <p style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 12, color: "var(--text-muted)" }}>Properties</p>
                             
