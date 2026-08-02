@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -70,9 +70,15 @@ export const uploadFile = async (file: Express.Multer.File): Promise<{ fileUrl: 
     return { fileUrl: localUrl, key: filename };
 };
 
-export const deleteFile = async (key: string): Promise<void> => {
+export const deleteFile = async (urlOrKey: string): Promise<void> => {
     const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'projectflowuploads';
     const s3Client = getS3Client();
+
+    // Extract the key (e.g., "attachments/filename.ext") from the URL if a full URL was passed
+    let key = urlOrKey;
+    if (urlOrKey.includes('/attachments/')) {
+        key = 'attachments/' + urlOrKey.split('/attachments/').pop();
+    }
 
     if (s3Client && bucketName && key.startsWith('attachments/')) {
         try {
@@ -89,12 +95,56 @@ export const deleteFile = async (key: string): Promise<void> => {
     }
 
     // Local fallback deletion
-    const localPath = path.join(__dirname, '../../uploads', key);
+    const filename = key.split('/').pop() || key;
+    const localPath = path.join(__dirname, '../../uploads', filename);
     if (fs.existsSync(localPath)) {
         try {
             fs.unlinkSync(localPath);
         } catch (err) {
             console.error('Error deleting local file:', err);
+        }
+    }
+};
+
+export const deleteFiles = async (urlsOrKeys: string[]): Promise<void> => {
+    const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'projectflowuploads';
+    const s3Client = getS3Client();
+
+    const keys = urlsOrKeys.map(url => {
+        if (url.includes('/attachments/')) {
+            return 'attachments/' + url.split('/attachments/').pop();
+        }
+        return url;
+    }).filter(key => key.startsWith('attachments/'));
+
+    if (s3Client && bucketName && keys.length > 0) {
+        try {
+            const chunks = [];
+            for (let i = 0; i < keys.length; i += 1000) {
+                chunks.push(keys.slice(i, i + 1000));
+            }
+            
+            for (const chunk of chunks) {
+                await s3Client.send(
+                    new DeleteObjectsCommand({
+                        Bucket: bucketName,
+                        Delete: {
+                            Objects: chunk.map(key => ({ Key: key })),
+                        },
+                    })
+                );
+            }
+        } catch (error) {
+            console.error('Error deleting multiple files from R2:', error);
+        }
+    }
+
+    // Local fallback deletion
+    for (const url of urlsOrKeys) {
+        const filename = url.split('/').pop() || url;
+        const localPath = path.join(__dirname, '../../uploads', filename);
+        if (fs.existsSync(localPath)) {
+            try { fs.unlinkSync(localPath); } catch (e) {}
         }
     }
 };

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
+import { deleteFiles } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // --- Validation Schemas ---
@@ -160,9 +161,22 @@ export const deleteList = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Board not found or access denied' });
         }
 
-        const list = await prisma.list.findFirst({ where: { id: listId, boardId } });
+        const list = await prisma.list.findFirst({ 
+            where: { id: listId, boardId },
+            include: {
+                cards: {
+                    include: { attachments: true }
+                }
+            }
+        });
         if (!list) {
             return res.status(404).json({ message: 'List not found' });
+        }
+
+        // Delete attachments from Cloudflare R2
+        const fileUrls = list.cards.flatMap(card => card.attachments.map(att => att.fileUrl));
+        if (fileUrls.length > 0) {
+            await deleteFiles(fileUrls);
         }
 
         await prisma.list.delete({ where: { id: listId } });

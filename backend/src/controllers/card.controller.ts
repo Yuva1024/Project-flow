@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
+import { deleteFiles } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
 
@@ -259,9 +260,18 @@ export const deleteCard = async (req: AuthRequest, res: Response) => {
                 id: cardId,
                 list: { board: { id: boardId, workspaceId } },
             },
+            include: {
+                attachments: true,
+            }
         });
         if (!card) {
             return res.status(404).json({ message: 'Card not found' });
+        }
+
+        // Delete attachments from Cloudflare R2
+        if (card.attachments && card.attachments.length > 0) {
+            const fileUrls = card.attachments.map(att => att.fileUrl);
+            await deleteFiles(fileUrls);
         }
 
         await prisma.card.delete({ where: { id: cardId } });

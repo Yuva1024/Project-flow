@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../utils/prisma';
+import { deleteFiles } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // Admin middleware - checks isAdmin flag
@@ -85,14 +86,61 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Cannot delete your own admin account' });
         }
 
-        const user = await prisma.user.findUnique({ where: { id: targetUserId } });
-        if (!user) {
+        const userWithData = await prisma.user.findUnique({ 
+            where: { id: targetUserId },
+            include: {
+                workspacesOwned: {
+                    include: {
+                        boards: {
+                            include: {
+                                lists: {
+                                    include: {
+                                        cards: {
+                                            include: { attachments: true }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                cardsCreated: {
+                    include: { attachments: true }
+                }
+            }
+        });
+        
+        if (!userWithData) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Collect all attachment URLs to delete from R2
+        const fileUrls = new Set<string>();
+        
+        // From owned workspaces
+        userWithData.workspacesOwned.forEach(ws => {
+            ws.boards.forEach(board => {
+                board.lists.forEach(list => {
+                    list.cards.forEach(card => {
+                        card.attachments.forEach(att => fileUrls.add(att.fileUrl));
+                    });
+                });
+            });
+        });
+
+        // From created cards
+        userWithData.cardsCreated.forEach(card => {
+            card.attachments.forEach(att => fileUrls.add(att.fileUrl));
+        });
+
+        const fileUrlsArray = Array.from(fileUrls);
+        if (fileUrlsArray.length > 0) {
+            await deleteFiles(fileUrlsArray);
         }
 
         await prisma.user.delete({ where: { id: targetUserId } });
 
-        res.json({ message: `User "${user.name}" deleted successfully` });
+        res.json({ message: `User "${userWithData.name}" deleted successfully` });
     } catch (error) {
         console.error('deleteUser error:', error);
         res.status(500).json({ message: 'Failed to delete user' });

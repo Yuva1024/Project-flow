@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { Prisma } from '@prisma/client';
+import { deleteFiles } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { createNotification } from '../utils/notification.helper';
 
@@ -297,9 +298,34 @@ export const deleteWorkspace = async (req: AuthRequest, res: Response) => {
         const userId = req.user!.userId;
         const id = req.params.id as string;
 
-        const workspace = await prisma.workspace.findUnique({ where: { id } });
+        const workspace = await prisma.workspace.findUnique({ 
+            where: { id },
+            include: {
+                boards: {
+                    include: {
+                        lists: {
+                            include: {
+                                cards: {
+                                    include: { attachments: true }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
         if (!workspace) {
             return res.status(404).json({ message: 'Workspace not found' });
+        }
+
+        // Delete all attachments from Cloudflare R2
+        const fileUrls = workspace.boards.flatMap(board =>
+            board.lists.flatMap(list =>
+                list.cards.flatMap(card => card.attachments.map(att => att.fileUrl))
+            )
+        );
+        if (fileUrls.length > 0) {
+            await deleteFiles(fileUrls);
         }
 
         if (workspace.ownerId !== userId) {

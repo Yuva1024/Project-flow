@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
+import { deleteFiles } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // --- Validation Schemas ---
@@ -179,9 +180,28 @@ export const deleteBoard = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ message: 'Only admins can delete boards' });
         }
 
-        const board = await prisma.board.findFirst({ where: { id: boardId, workspaceId } });
+        const board = await prisma.board.findFirst({ 
+            where: { id: boardId, workspaceId },
+            include: {
+                lists: {
+                    include: {
+                        cards: {
+                            include: { attachments: true }
+                        }
+                    }
+                }
+            }
+        });
         if (!board) {
             return res.status(404).json({ message: 'Board not found' });
+        }
+
+        // Delete attachments from Cloudflare R2
+        const fileUrls = board.lists.flatMap(list => 
+            list.cards.flatMap(card => card.attachments.map(att => att.fileUrl))
+        );
+        if (fileUrls.length > 0) {
+            await deleteFiles(fileUrls);
         }
 
         await prisma.board.delete({ where: { id: boardId } });
