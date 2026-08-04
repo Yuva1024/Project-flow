@@ -99,33 +99,31 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
         setFileName(file.name);
         setFileSize(file.size);
 
-        // If onFileUpload is provided, upload to server for permanent URL
+        // 1. Set local object URL IMMEDIATELY so model renders on your device with 0-second delay
+        const localBlobUrl = URL.createObjectURL(file);
+        setModelSrc(localBlobUrl);
+        setIsLoading(true);
+        setLoadProgress(0);
+
+        // 2. Upload to server/Cloudflare R2 in background to sync for all other users
         if (onFileUpload) {
             setIsUploading(true);
             try {
                 const result = await onFileUpload(file);
                 if (result && result.fileUrl) {
+                    // Update to cloud URL for syncing across all devices
                     setModelSrc(result.fileUrl);
-                    setIsLoading(true);
-                    setLoadProgress(0);
                     if (onModelChange) {
                         onModelChange(result.fileUrl, { name: file.name, size: file.size });
                     }
                 }
-            } catch {
-                setValidationError("Failed to upload 3D model. Please try again.");
+            } catch (err) {
+                console.error("Cloud upload error for 3D model:", err);
             } finally {
                 setIsUploading(false);
             }
-        } else {
-            // Fallback: local blob URL (only visible to current user)
-            const objectUrl = URL.createObjectURL(file);
-            setModelSrc(objectUrl);
-            setIsLoading(true);
-            setLoadProgress(0);
-            if (onModelChange) {
-                onModelChange(objectUrl, { name: file.name, size: file.size });
-            }
+        } else if (onModelChange) {
+            onModelChange(localBlobUrl, { name: file.name, size: file.size });
         }
     };
 
