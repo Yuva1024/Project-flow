@@ -66,7 +66,8 @@ export const uploadFile = async (file: Express.Multer.File): Promise<{ fileUrl: 
     fs.writeFileSync(localPath, file.buffer);
 
     const port = process.env.PORT || 5000;
-    const localUrl = `http://localhost:${port}/uploads/${filename}`;
+    const backendUrl = process.env.BACKEND_URL ? process.env.BACKEND_URL.replace(/\/$/, '') : `http://localhost:${port}`;
+    const localUrl = `${backendUrl}/uploads/${filename}`;
     return { fileUrl: localUrl, key: filename };
 };
 
