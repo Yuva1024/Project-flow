@@ -21,6 +21,12 @@ const updateCardSchema = z.object({
     dueDate: z.string().datetime().nullable().optional(),
     listId: z.string().uuid().optional(),
     position: z.number().optional(),
+    model3DSections: z.array(z.object({
+        id: z.string(),
+        title: z.string(),
+        modelUrl: z.string(),
+        autoRotate: z.boolean().optional(),
+    })).nullable().optional(),
 });
 
 // --- Helper: Verify board access via list ---

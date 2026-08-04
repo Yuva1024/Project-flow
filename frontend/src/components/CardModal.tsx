@@ -50,26 +50,17 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
 
     // 3D Model Viewer Sections State
     interface Model3DSection { id: string; title: string; modelUrl: string; autoRotate: boolean; }
-    const [model3DSections, setModel3DSections] = useState<Model3DSection[]>([]);
+    const [model3DSections, setModel3DSections] = useState<Model3DSection[]>((card.model3DSections as Model3DSection[]) || []);
     const [new3DSectionName, setNew3DSectionName] = useState("");
     const [show3DSectionForm, setShow3DSectionForm] = useState(false);
 
-    useEffect(() => {
-        try {
-            const saved = localStorage.getItem(`card_3d_sections_${card.id}`);
-            if (saved) {
-                setModel3DSections(JSON.parse(saved));
-            } else {
-                setModel3DSections([]);
-            }
-        } catch { }
-    }, [card.id]);
-
-    const save3DSections = (sections: Model3DSection[]) => {
+    const save3DSections = async (sections: Model3DSection[]) => {
         setModel3DSections(sections);
         try {
-            localStorage.setItem(`card_3d_sections_${card.id}`, JSON.stringify(sections));
-        } catch { }
+            await api.patch(cardBase, { model3DSections: sections });
+        } catch {
+            toast.error("Failed to save 3D sections");
+        }
     };
 
     const handleCreate3DSection = (e: React.FormEvent) => {
@@ -772,6 +763,10 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                     initialModelUrl={sec.modelUrl}
                                     title={sec.title}
                                     onModelChange={(url) => handleUpdate3DSectionModel(sec.id, url)}
+                                    onFileUpload={async (file) => {
+                                        const result = await handleFileUpload(file);
+                                        return result ? { fileUrl: result.fileUrl } : null;
+                                    }}
                                 />
                             </div>
                         ))}

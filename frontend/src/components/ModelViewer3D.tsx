@@ -1,15 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, CheckCircle2, FileCode } from "lucide-react";
+import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, FileCode } from "lucide-react";
 
 interface ModelViewer3DProps {
     initialModelUrl?: string;
     onModelChange?: (url: string, fileInfo?: { name: string; size: number }) => void;
+    onFileUpload?: (file: File) => Promise<{ fileUrl: string } | null>;
     title?: string;
 }
 
-export default function ModelViewer3D({ initialModelUrl = "", onModelChange, title }: ModelViewer3DProps) {
+export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onFileUpload, title }: ModelViewer3DProps) {
     const [modelSrc, setModelSrc] = useState<string>(initialModelUrl);
     const [fileName, setFileName] = useState<string>("");
     const [fileSize, setFileSize] = useState<number | null>(null);
@@ -17,33 +18,30 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
     const [validationError, setValidationError] = useState<string | null>(null);
     const [sizeWarning, setSizeWarning] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isUploading, setIsUploading] = useState<boolean>(false);
     const [loadProgress, setLoadProgress] = useState<number>(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [autoRotate, setAutoRotate] = useState<boolean>(false);
 
     const modelViewerRef = useRef<any>(null);
-    const currentObjectUrlRef = useRef<string | null>(null);
-    const previousObjectUrlRef = useRef<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync initial model URL if passed from parent
     useEffect(() => {
-        if (initialModelUrl && initialModelUrl !== modelSrc && !currentObjectUrlRef.current) {
+        if (initialModelUrl && initialModelUrl !== modelSrc) {
             setModelSrc(initialModelUrl);
+            if (initialModelUrl) {
+                // Extract filename from URL if available
+                try {
+                    const urlParts = initialModelUrl.split('/');
+                    const lastPart = urlParts[urlParts.length - 1];
+                    if (lastPart && (lastPart.endsWith('.glb') || lastPart.endsWith('.gltf'))) {
+                        setFileName(decodeURIComponent(lastPart));
+                    }
+                } catch {}
+            }
         }
     }, [initialModelUrl]);
-
-    // Cleanup object URLs on unmount to prevent memory leaks
-    useEffect(() => {
-        return () => {
-            if (currentObjectUrlRef.current) {
-                URL.revokeObjectURL(currentObjectUrlRef.current);
-            }
-            if (previousObjectUrlRef.current) {
-                URL.revokeObjectURL(previousObjectUrlRef.current);
-            }
-        };
-    }, []);
 
     // Bind model-viewer events (progress, load, error)
     useEffect(() => {
@@ -58,11 +56,6 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
         const handleLoad = () => {
             setIsLoading(false);
             setLoadError(null);
-            // Revoke previous object URL safely after new model completes loading
-            if (previousObjectUrlRef.current) {
-                URL.revokeObjectURL(previousObjectUrlRef.current);
-                previousObjectUrlRef.current = null;
-            }
         };
 
         const handleError = () => {
@@ -82,7 +75,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
     }, [modelSrc]);
 
     // Handle File Selection and Validation
-    const processFile = (file: File) => {
+    const processFile = async (file: File) => {
         setValidationError(null);
         setSizeWarning(null);
         setLoadError(null);
@@ -103,28 +96,44 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
             setSizeWarning("File is over 15MB. Consider using Draco compression on export for faster loading.");
         }
 
-        // Keep track of previous object URL to revoke after load
-        if (currentObjectUrlRef.current) {
-            previousObjectUrlRef.current = currentObjectUrlRef.current;
-        }
-
-        const objectUrl = URL.createObjectURL(file);
-        currentObjectUrlRef.current = objectUrl;
-
         setFileName(file.name);
         setFileSize(file.size);
-        setIsLoading(true);
-        setLoadProgress(0);
-        setModelSrc(objectUrl);
 
-        if (onModelChange) {
-            onModelChange(objectUrl, { name: file.name, size: file.size });
+        // If onFileUpload is provided, upload to server for permanent URL
+        if (onFileUpload) {
+            setIsUploading(true);
+            try {
+                const result = await onFileUpload(file);
+                if (result && result.fileUrl) {
+                    setModelSrc(result.fileUrl);
+                    setIsLoading(true);
+                    setLoadProgress(0);
+                    if (onModelChange) {
+                        onModelChange(result.fileUrl, { name: file.name, size: file.size });
+                    }
+                }
+            } catch {
+                setValidationError("Failed to upload 3D model. Please try again.");
+            } finally {
+                setIsUploading(false);
+            }
+        } else {
+            // Fallback: local blob URL (only visible to current user)
+            const objectUrl = URL.createObjectURL(file);
+            setModelSrc(objectUrl);
+            setIsLoading(true);
+            setLoadProgress(0);
+            if (onModelChange) {
+                onModelChange(objectUrl, { name: file.name, size: file.size });
+            }
         }
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) processFile(file);
+        // Reset input so re-uploading the same file triggers onChange
+        if (e.target) e.target.value = "";
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -170,12 +179,14 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                     borderRadius: "var(--radius)",
                     padding: "16px 20px",
                     background: isDragOver ? "rgba(99, 102, 241, 0.12)" : "var(--bg-elevated)",
-                    cursor: "pointer",
+                    cursor: isUploading ? "wait" : "pointer",
                     transition: "all 200ms ease",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 12
+                    gap: 12,
+                    opacity: isUploading ? 0.7 : 1,
+                    pointerEvents: isUploading ? "none" : "auto"
                 }}
             >
                 <input
@@ -201,10 +212,10 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                     </div>
                     <div>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-primary)" }}>
-                            {fileName ? `Replace Model: ${fileName}` : "Upload 3D Model (.GLB / .GLTF)"}
+                            {isUploading ? "Uploading to cloud..." : fileName ? `Replace Model: ${fileName}` : "Upload 3D Model (.GLB / .GLTF)"}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                            Drag and drop file here or click to browse
+                            {isUploading ? "Please wait while the file is being uploaded" : "Drag and drop file here or click to browse"}
                         </div>
                     </div>
                 </div>
@@ -214,7 +225,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                     className="btn-ghost"
                     style={{ fontSize: 11.5, padding: "6px 12px", pointerEvents: "none" }}
                 >
-                    Browse File
+                    {isUploading ? "Uploading..." : "Browse File"}
                 </button>
             </div>
 
@@ -256,6 +267,25 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                 </div>
             )}
 
+            {/* Uploading to Cloud Overlay */}
+            {isUploading && (
+                <div style={{
+                    padding: "14px 18px",
+                    borderRadius: "var(--radius)",
+                    background: "rgba(99, 102, 241, 0.08)",
+                    border: "1px solid rgba(99, 102, 241, 0.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--accent)"
+                }}>
+                    <div className="spinner"><RefreshCw size={16} /></div>
+                    <span>Uploading 3D model to cloud storage... All team members will be able to see it.</span>
+                </div>
+            )}
+
             {/* 3D Model Container */}
             <div style={{
                 position: "relative",
@@ -267,7 +297,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                 minHeight: "360px"
             }}>
                 {/* 1. Neutral Placeholder state before upload */}
-                {!modelSrc && (
+                {!modelSrc && !isUploading && (
                     <div style={{
                         width: "100%",
                         height: "360px",
@@ -304,7 +334,6 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, tit
                 {/* 2. Model Viewport & Controls */}
                 {modelSrc && (
                     <>
-                        {/* Explicit CSS Width and Height on model-viewer element */}
                         {/* @ts-ignore */}
                         <model-viewer
                             ref={modelViewerRef}
