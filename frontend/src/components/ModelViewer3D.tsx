@@ -41,13 +41,23 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
     const [loadError, setLoadError] = useState<string | null>(null);
     const [autoRotate, setAutoRotate] = useState<boolean>(false);
 
+    const [isModelRevealed, setIsModelRevealed] = useState<boolean>(false);
+
     const modelViewerRef = useRef<any>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const lastUploadedCloudUrl = useRef<string | null>(null);
 
     // Sync initial model URL if passed from parent
     useEffect(() => {
         if (initialModelUrl && initialModelUrl !== modelSrc) {
+            // If the incoming URL is the one we just uploaded, don't override our local blob URL!
+            if (initialModelUrl === lastUploadedCloudUrl.current) {
+                return;
+            }
+            
             setModelSrc(initialModelUrl);
+            setIsModelRevealed(false); // Reset revealed state for new external models
+            
             if (initialModelUrl) {
                 // Extract filename from URL if available
                 try {
@@ -120,6 +130,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
         // 1. Set local object URL IMMEDIATELY so model renders on your device with 0-second delay
         const localBlobUrl = URL.createObjectURL(file);
         setModelSrc(localBlobUrl);
+        setIsModelRevealed(true);
         setIsLoading(true);
         setLoadProgress(0);
 
@@ -129,8 +140,9 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
             try {
                 const result = await onFileUpload(file);
                 if (result && result.fileUrl) {
-                    // Update to cloud URL for syncing across all devices
-                    setModelSrc(result.fileUrl);
+                    // Save to ref so we recognize this URL when it comes back from the parent/websocket
+                    lastUploadedCloudUrl.current = result.fileUrl;
+                    // Do NOT setModelSrc to the cloud URL here. Keep using the localBlobUrl for instant viewing!
                     if (onModelChange) {
                         onModelChange(result.fileUrl, { name: file.name, size: file.size });
                     }
@@ -362,7 +374,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             camera-controls
                             auto-rotate={autoRotate ? true : undefined}
                             touch-action="pan-y"
-                            reveal={modelSrc.startsWith("blob:") ? "auto" : "manual"}
+                            reveal={modelSrc.startsWith("blob:") || isModelRevealed ? "auto" : "manual"}
                             style={{
                                 width: "100%",
                                 height: "360px",
@@ -371,11 +383,12 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             }}
                         >
                             {/* Custom Poster for Lazy Loading */}
-                            {!modelSrc.startsWith("blob:") && (
+                            {!modelSrc.startsWith("blob:") && !isModelRevealed && (
                                 <div
                                     slot="poster"
                                     onClick={(e) => {
                                         e.preventDefault();
+                                        setIsModelRevealed(true);
                                         modelViewerRef.current?.dismissPoster();
                                     }}
                                     style={{
