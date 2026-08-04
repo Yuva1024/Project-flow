@@ -655,7 +655,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         <div>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                                 <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
-                                    <Paperclip size={13} /> Attachments ({attachments.length})
+                                    <Paperclip size={13} /> Attachments ({attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).length})
                                 </h3>
                                 <label style={{ cursor: "pointer" }}>
                                     <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
@@ -690,9 +690,9 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             </div>
 
                             {/* Attachments List */}
-                            {attachments.length > 0 && (
+                            {attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).length > 0 && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 280, overflowY: "auto", paddingRight: 6 }}>
-                                    {attachments.map((att: any) => {
+                                    {attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).map((att: any) => {
                                         const isImage = att.mimeType?.startsWith("image/");
                                         const isVideo = att.mimeType?.startsWith("video/");
 

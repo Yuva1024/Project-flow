@@ -375,6 +375,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             auto-rotate={autoRotate ? true : undefined}
                             touch-action="pan-y"
                             reveal={modelSrc.startsWith("blob:") || isModelRevealed ? "auto" : "manual"}
+                            poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                             style={{
                                 width: "100%",
                                 height: "360px",
