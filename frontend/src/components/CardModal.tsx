@@ -4,15 +4,10 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2 } from "lucide-react";
 import { Card } from "@/store/board";
-import Sketchfab3DViewer from "@/components/Sketchfab3DViewer";
+import ModelViewer3D from "@/components/ModelViewer3D";
 const LABEL_PRESETS = ["#5f62f1", "#ef4444", "#10b981", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#84cc16", "#fb923c", "#818cf8"];
-const SHOW_3D_VIEWER = false; // Set to true to activate 3D Model Viewer feature
+const SHOW_3D_VIEWER = true; // Set to true to activate 3D Model Viewer feature
 
-const getSketchfabId = (url: string) => {
-    if (!url || !url.includes('sketchfab.com')) return null;
-    const match = url.match(/([a-f0-9]{32})/i);
-    return match ? match[1] : null;
-};
 
 interface Props { card: Card; workspaceId: string; boardId: string; onClose: () => void; onRefresh: () => void; }
 
@@ -83,8 +78,8 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         const newSec: Model3DSection = {
             id: Date.now().toString(),
             title: new3DSectionName.trim(),
-            modelUrl: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
-            autoRotate: true
+            modelUrl: "",
+            autoRotate: false
         };
         const updated = [...model3DSections, newSec];
         save3DSections(updated);
@@ -772,58 +767,11 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                     </button>
                                 </div>
 
-                                {/* Controls & Upload Row */}
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                                        <div style={{ flex: 1, minWidth: 180 }}>
-                                            <select value={sec.modelUrl} onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)} style={{ fontSize: 12, padding: "6px 10px" }}>
-                                                <option value="">Select an attached 3D file</option>
-                                                {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).length > 0 && (
-                                                    <optgroup label="Uploaded 3D Files">
-                                                        {attachments.filter((a: any) => a.fileName.match(/\.(glb|gltf|obj)$/i)).map((a: any) => (
-                                                            <option key={a.id} value={a.fileUrl}>🎮 {a.fileName}</option>
-                                                        ))}
-                                                    </optgroup>
-                                                )}
-                                            </select>
-                                        </div>
-
-                                        <label style={{ cursor: "pointer" }}>
-                                            <input type="file" accept=".glb,.gltf,.obj" onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) {
-                                                    handleFileUpload(file).then((att) => {
-                                                        if (att?.fileUrl) {
-                                                            handleUpdate3DSectionModel(sec.id, att.fileUrl);
-                                                            toast.success(`Uploaded ${file.name} to 3D section!`);
-                                                        }
-                                                    });
-                                                }
-                                            }} style={{ display: "none" }} />
-                                            <span className="btn-secondary" style={{ fontSize: 11.5, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
-                                                <UploadCloud size={13} /> Upload .GLB / .GLTF
-                                            </span>
-                                        </label>
-                                    </div>
-
-                                    {/* Direct URL / Sketchfab URL Input */}
-                                    <input
-                                        type="text"
-                                        placeholder="Or paste Sketchfab link / direct 3D model URL..."
-                                        value={sec.modelUrl}
-                                        onChange={(e) => handleUpdate3DSectionModel(sec.id, e.target.value)}
-                                        style={{ fontSize: 11.5, padding: "6px 10px" }}
-                                    />
-                                </div>
-
-                                {/* Interactive 3D Canvas / Sketchfab Viewer */}
-                                <Sketchfab3DViewer
-                                    src={sec.modelUrl}
-                                    title={`3D Model — ${sec.title}`}
-                                    autoRotate={sec.autoRotate}
-                                    onToggleAutoRotate={() => handleToggleAutoRotate(sec.id)}
-                                    onFullscreen={() => setLightboxMedia({ type: '3d', url: sec.modelUrl, title: `3D Model — ${sec.title}` })}
-                                    height="320px"
+                                {/* ModelViewer3D with drag-and-drop upload */}
+                                <ModelViewer3D
+                                    initialModelUrl={sec.modelUrl}
+                                    title={sec.title}
+                                    onModelChange={(url) => handleUpdate3DSectionModel(sec.id, url)}
                                 />
                             </div>
                         ))}
@@ -949,11 +897,16 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         )}
                         {lightboxMedia.type === "3d" && (
                             <div style={{ width: "85vw", height: "75vh" }}>
-                                <Sketchfab3DViewer
+                                {/* @ts-ignore */}
+                                <model-viewer
                                     src={lightboxMedia.url}
-                                    title={lightboxMedia.title}
-                                    autoRotate={true}
-                                    height="100%"
+                                    alt={lightboxMedia.title || "3D Model"}
+                                    environment-image="neutral"
+                                    exposure="1"
+                                    shadow-intensity="1"
+                                    camera-controls
+                                    auto-rotate
+                                    style={{ width: "100%", height: "100%", display: "block", backgroundColor: "#111322", borderRadius: "var(--radius-lg)" }}
                                 />
                             </div>
                         )}
