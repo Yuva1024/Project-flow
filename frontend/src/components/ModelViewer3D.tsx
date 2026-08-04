@@ -3,6 +3,24 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, FileCode } from "lucide-react";
 
+declare global {
+    namespace JSX {
+        interface IntrinsicElements {
+            'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+                src?: string;
+                alt?: string;
+                'environment-image'?: string;
+                exposure?: string;
+                'shadow-intensity'?: string;
+                'camera-controls'?: boolean;
+                'auto-rotate'?: boolean;
+                'touch-action'?: string;
+                reveal?: string;
+            };
+        }
+    }
+}
+
 interface ModelViewer3DProps {
     initialModelUrl?: string;
     onModelChange?: (url: string, fileInfo?: { name: string; size: number }) => void;
@@ -330,10 +348,11 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                 )}
 
                 {/* 2. Model Viewport & Controls */}
-                {modelSrc && (
+                {modelSrc && (() => {
+                    const ModelViewer = 'model-viewer' as any;
+                    return (
                     <>
-                        {/* @ts-ignore */}
-                        <model-viewer
+                        <ModelViewer
                             ref={modelViewerRef}
                             src={modelSrc}
                             alt={title || fileName || "3D Model"}
@@ -343,13 +362,68 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             camera-controls
                             auto-rotate={autoRotate ? true : undefined}
                             touch-action="pan-y"
+                            reveal={modelSrc.startsWith("blob:") ? "auto" : "manual"}
                             style={{
                                 width: "100%",
                                 height: "360px",
                                 display: "block",
                                 backgroundColor: "#111322"
                             }}
-                        />
+                        >
+                            {/* Custom Poster for Lazy Loading */}
+                            {!modelSrc.startsWith("blob:") && (
+                                <div
+                                    slot="poster"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        modelViewerRef.current?.dismissPoster();
+                                    }}
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        backgroundColor: "#0b0d18",
+                                        cursor: "pointer",
+                                        backgroundImage: "radial-gradient(circle at center, #1a1e3a 0%, #0b0d18 100%)"
+                                    }}
+                                >
+                                    <div style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "center",
+                                        gap: 12,
+                                        padding: "20px 30px",
+                                        background: "rgba(255, 255, 255, 0.05)",
+                                        backdropFilter: "blur(8px)",
+                                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                                        borderRadius: "var(--radius-lg)",
+                                        transition: "all 0.2s ease"
+                                    }}
+                                    onMouseOver={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)"}
+                                    onMouseOut={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
+                                    >
+                                        <div style={{ 
+                                            width: 48, 
+                                            height: 48, 
+                                            borderRadius: "50%", 
+                                            background: "var(--accent)", 
+                                            display: "flex", 
+                                            alignItems: "center", 
+                                            justifyContent: "center",
+                                            boxShadow: "0 0 20px rgba(99, 102, 241, 0.4)"
+                                        }}>
+                                            <Box size={24} color="white" />
+                                        </div>
+                                        <div style={{ textAlign: "center" }}>
+                                            <div style={{ fontSize: 14, fontWeight: 700, color: "white" }}>Load 3D Model</div>
+                                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Click to view interactive 3D asset</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </ModelViewer>
 
                         {/* Top Controls Overlay */}
                         <div style={{
@@ -383,7 +457,8 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             </button>
                         </div>
                     </>
-                )}
+                    );
+                })()}
 
                 {/* 3. Loading Overlay Spinner */}
                 {isLoading && (
