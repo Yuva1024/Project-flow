@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye } from "lucide-react";
@@ -132,23 +132,42 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         }
     };
 
+    const uploadAbortControllerRef = useRef<AbortController | null>(null);
+
+    const cancelUpload = () => {
+        if (uploadAbortControllerRef.current) {
+            uploadAbortControllerRef.current.abort();
+            uploadAbortControllerRef.current = null;
+            setIsUploading(false);
+            toast.error("Upload canceled");
+        }
+    };
+
     const handleFileUpload = async (file: File) => {
         if (!file) return null;
         setIsUploading(true);
+        const controller = new AbortController();
+        uploadAbortControllerRef.current = controller;
+
         const formData = new FormData();
         formData.append('file', file);
         try {
             const { data } = await api.post(`${cardBase}/attachments`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
+                signal: controller.signal,
             });
             setAttachments(prev => [data, ...prev]);
             toast.success(`Attached "${file.name}"`);
             return data;
-        } catch {
+        } catch (err: any) {
+            if (err?.name === 'CanceledError' || err?.message === 'canceled' || err?.code === 'ERR_CANCELED') {
+                return null;
+            }
             toast.error("Failed to upload file");
             return null;
         } finally {
             setIsUploading(false);
+            uploadAbortControllerRef.current = null;
         }
     };
 
@@ -666,12 +685,18 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                 <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
                                     <Paperclip size={13} /> Attachments ({attachments.length})
                                 </h3>
-                                <label style={{ cursor: "pointer" }}>
-                                    <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
-                                    <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
-                                        <Plus size={11} /> {isUploading ? 'Uploading...' : 'Add File'}
-                                    </span>
-                                </label>
+                                {isUploading ? (
+                                    <button type="button" onClick={cancelUpload} className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5, color: "var(--danger)", border: "1px solid rgba(239, 68, 68, 0.4)", background: "rgba(239, 68, 68, 0.12)", cursor: "pointer" }}>
+                                        <X size={12} /> Cancel Upload
+                                    </button>
+                                ) : (
+                                    <label style={{ cursor: "pointer" }}>
+                                        <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
+                                        <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
+                                            <Plus size={11} /> Add File
+                                        </span>
+                                    </label>
+                                )}
                             </div>
 
                             {/* Drag & Drop Target Area */}

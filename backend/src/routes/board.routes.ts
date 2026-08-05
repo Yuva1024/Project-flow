@@ -63,7 +63,7 @@ import {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size
+    // Unlimited file size — no per-file limit restriction
 });
 
 const router = Router({ mergeParams: true });

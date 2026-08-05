@@ -23,7 +23,9 @@ export async function GET(request: Request) {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, OPTIONS',
                 'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
             },
         });
     } catch (error: any) {
