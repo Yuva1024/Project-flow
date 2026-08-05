@@ -32,6 +32,10 @@ export const uploadFile = async (file: Express.Multer.File): Promise<{ fileUrl: 
     const fileExt = path.extname(file.originalname);
     const uniqueKey = `attachments/${Date.now()}-${Math.random().toString(36).substring(2, 9)}${fileExt}`;
 
+    let contentType = file.mimetype;
+    if (fileExt.toLowerCase() === '.glb') contentType = 'model/gltf-binary';
+    if (fileExt.toLowerCase() === '.gltf') contentType = 'model/gltf+json';
+
     if (s3Client && bucketName) {
         try {
             await s3Client.send(
@@ -39,7 +43,7 @@ export const uploadFile = async (file: Express.Multer.File): Promise<{ fileUrl: 
                     Bucket: bucketName,
                     Key: uniqueKey,
                     Body: file.buffer,
-                    ContentType: file.mimetype,
+                    ContentType: contentType,
                 })
             );
 

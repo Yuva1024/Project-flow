@@ -2,9 +2,9 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2 } from "lucide-react";
+import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye } from "lucide-react";
 import { Card } from "@/store/board";
-import ModelViewer3D from "@/components/ModelViewer3D";
+import Three3DViewer from "@/components/Three3DViewer";
 const LABEL_PRESETS = ["#5f62f1", "#ef4444", "#10b981", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#84cc16", "#fb923c", "#818cf8"];
 const SHOW_3D_VIEWER = true; // Set to true to activate 3D Model Viewer feature
 
@@ -79,42 +79,15 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         toast.success(`Created 3D section "${newSec.title}" below attachments`);
     };
 
-    const handleDelete3DSection = async (secId: string) => {
-        // Find the section being deleted to get its paired attachmentId
-        const sectionToDelete = model3DSections.find(s => s.id === secId);
+    const handleDelete3DSection = (secId: string) => {
         const updated = model3DSections.filter(s => s.id !== secId);
         save3DSections(updated);
-
-        // Also delete the paired attachment file from the backend/R2
-        if (sectionToDelete?.attachmentId) {
-            try {
-                await api.delete(`${cardBase}/attachments/${sectionToDelete.attachmentId}`);
-                setAttachments(prev => prev.filter(a => a.id !== sectionToDelete.attachmentId));
-            } catch {
-                console.error("Failed to delete paired 3D attachment from server");
-            }
-        }
         toast.success("3D Section deleted");
     };
 
-    const handleUpdate3DSectionModel = async (secId: string, modelUrl: string, attachmentId?: string) => {
-        // Find the old section to check if there's a previous attachment to clean up
-        const oldSection = model3DSections.find(s => s.id === secId);
-        const oldAttachmentId = oldSection?.attachmentId;
-
-        // Update the section with new model URL and attachment ID
+    const handleUpdate3DSectionModel = (secId: string, modelUrl: string, attachmentId?: string) => {
         const updated = model3DSections.map(s => s.id === secId ? { ...s, modelUrl, attachmentId } : s);
         save3DSections(updated);
-
-        // If replacing a model, delete the old attachment from the backend/R2
-        if (oldAttachmentId && oldAttachmentId !== attachmentId) {
-            try {
-                await api.delete(`${cardBase}/attachments/${oldAttachmentId}`);
-                setAttachments(prev => prev.filter(a => a.id !== oldAttachmentId));
-            } catch {
-                console.error("Failed to delete old 3D attachment from server");
-            }
-        }
     };
 
     const handleToggleAutoRotate = (secId: string) => {
@@ -183,6 +156,15 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         try {
             await api.delete(`${cardBase}/attachments/${id}`);
             setAttachments(attachments.filter(a => a.id !== id));
+
+            // If any 3D section was linked to this deleted attachment, reset its model
+            const updatedSections = model3DSections.map(sec =>
+                sec.attachmentId === id ? { ...sec, modelUrl: "", attachmentId: undefined } : sec
+            );
+            if (JSON.stringify(updatedSections) !== JSON.stringify(model3DSections)) {
+                save3DSections(updatedSections);
+            }
+
             toast.success("Attachment deleted");
         } catch {
             toast.error("Failed to delete attachment");
@@ -682,7 +664,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         <div>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                                 <h3 style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
-                                    <Paperclip size={13} /> Attachments ({attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).length})
+                                    <Paperclip size={13} /> Attachments ({attachments.length})
                                 </h3>
                                 <label style={{ cursor: "pointer" }}>
                                     <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
@@ -717,14 +699,23 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             </div>
 
                             {/* Attachments List */}
-                            {attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).length > 0 && (
+                            {attachments.length > 0 && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 280, overflowY: "auto", paddingRight: 6 }}>
-                                    {attachments.filter((att: any) => !att.fileName.toLowerCase().endsWith('.glb') && !att.fileName.toLowerCase().endsWith('.gltf')).map((att: any) => {
+                                    {attachments.map((att: any) => {
                                         const isImage = att.mimeType?.startsWith("image/");
                                         const isVideo = att.mimeType?.startsWith("video/");
+                                        const is3D = att.fileName.toLowerCase().endsWith('.glb') || att.fileName.toLowerCase().endsWith('.gltf');
 
                                         return (
-                                            <div key={att.id} style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                                            <div key={att.id}
+                                                 draggable={is3D}
+                                                 onDragStart={is3D ? (e) => {
+                                                     const payload = JSON.stringify({ is3DAttachment: true, id: att.id, fileName: att.fileName, fileUrl: att.fileUrl, fileSize: att.fileSize });
+                                                     e.dataTransfer.setData("text/plain", payload);
+                                                     e.dataTransfer.setData("application/x-3d-attachment", payload);
+                                                     e.dataTransfer.effectAllowed = "copy";
+                                                 } : undefined}
+                                                 style={{ borderRadius: "var(--radius)", padding: 12, background: "var(--bg-elevated)", border: is3D ? "1px solid rgba(99, 102, 241, 0.3)" : "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10, cursor: is3D ? "grab" : "default" }}>
                                                 {/* Media Preview */}
                                                 {isImage && (
                                                     <div onClick={() => setLightboxMedia({ type: 'image', url: att.fileUrl, title: att.fileName })}
@@ -742,11 +733,14 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                 {/* File Details & Download Row */}
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                                                     <div style={{ display: "flex", alignItems: "center", gap: 10, overflow: "hidden" }}>
-                                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--accent)15", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                                                            {isImage ? <ImageIcon size={16} /> : isVideo ? <Video size={16} /> : <FileText size={16} />}
+                                                        <div style={{ width: 32, height: 32, borderRadius: 8, background: is3D ? "rgba(99, 102, 241, 0.15)" : "var(--accent)15", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                                            {is3D ? <Box size={16} /> : isImage ? <ImageIcon size={16} /> : isVideo ? <Video size={16} /> : <FileText size={16} />}
                                                         </div>
                                                         <div style={{ overflow: "hidden" }}>
-                                                            <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.fileName}</div>
+                                                            <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                                                                {att.fileName}
+                                                                {is3D && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(99, 102, 241, 0.15)", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>3D Model</span>}
+                                                            </div>
                                                             <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
                                                                 {formatFileSize(att.fileSize)} • {new Date(att.createdAt).toLocaleDateString()}
                                                             </div>
@@ -754,6 +748,11 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                     </div>
 
                                                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                                                        {is3D && (
+                                                            <button onClick={() => setLightboxMedia({ type: '3d', url: att.fileUrl, title: att.fileName })} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5, background: "rgba(99, 102, 241, 0.15)", color: "var(--accent)", border: "1px solid rgba(99, 102, 241, 0.3)" }}>
+                                                                <Eye size={12} /> 3D Preview
+                                                            </button>
+                                                        )}
                                                         <button onClick={() => forceDownload(att.fileUrl, att.fileName)} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
                                                             <Download size={12} /> Download
                                                         </button>
@@ -762,6 +761,11 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                         </button>
                                                     </div>
                                                 </div>
+                                                {is3D && (
+                                                    <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", display: "flex", alignItems: "center", gap: 4, paddingTop: 2 }}>
+                                                        <Box size={10} style={{ color: "var(--accent)" }} /> Drag this into a 3D Viewer section below to preview
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -785,12 +789,18 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                     </button>
                                 </div>
 
-                                {/* ModelViewer3D with drag-and-drop upload */}
-                                <ModelViewer3D
+                                {/* Three3DViewer (React Three Fiber / Three.js WebGL Engine) */}
+                                <Three3DViewer
                                     initialModelUrl={sec.modelUrl}
                                     title={sec.title}
+                                    availableAttachments={attachments
+                                        .filter((att: any) => att.fileName.toLowerCase().endsWith('.glb') || att.fileName.toLowerCase().endsWith('.gltf'))
+                                        .map((att: any) => ({ id: att.id, fileName: att.fileName, fileUrl: att.fileUrl, fileSize: att.fileSize }))
+                                    }
+                                    onAttachmentSelect={(att) => {
+                                        handleUpdate3DSectionModel(sec.id, att.fileUrl, att.id);
+                                    }}
                                     onModelChange={(url, fileInfo) => {
-                                        // fileInfo carries attachmentId from the upload result
                                         const attId = (fileInfo as any)?.attachmentId;
                                         handleUpdate3DSectionModel(sec.id, url, attId);
                                     }}
@@ -923,16 +933,9 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                         )}
                         {lightboxMedia.type === "3d" && (
                             <div style={{ width: "85vw", height: "75vh" }}>
-                                {/* @ts-ignore */}
-                                <model-viewer
-                                    src={lightboxMedia.url}
-                                    alt={lightboxMedia.title || "3D Model"}
-                                    environment-image="neutral"
-                                    exposure="1"
-                                    shadow-intensity="1"
-                                    camera-controls
-                                    auto-rotate
-                                    style={{ width: "100%", height: "100%", display: "block", backgroundColor: "#111322", borderRadius: "var(--radius-lg)" }}
+                                <Three3DViewer
+                                    initialModelUrl={lightboxMedia.url}
+                                    title={lightboxMedia.title}
                                 />
                             </div>
                         )}

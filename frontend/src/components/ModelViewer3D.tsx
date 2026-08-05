@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, FileCode } from "lucide-react";
+import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, FileCode, ArrowDownToLine } from "lucide-react";
 
 declare global {
     namespace JSX {
@@ -21,14 +21,23 @@ declare global {
     }
 }
 
+interface Attachment3D {
+    id: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+}
+
 interface ModelViewer3DProps {
     initialModelUrl?: string;
     onModelChange?: (url: string, fileInfo?: { name: string; size: number; attachmentId?: string }) => void;
     onFileUpload?: (file: File) => Promise<{ fileUrl: string; attachmentId?: string } | null>;
+    onAttachmentSelect?: (attachment: Attachment3D) => void;
+    availableAttachments?: Attachment3D[];
     title?: string;
 }
 
-export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onFileUpload, title }: ModelViewer3DProps) {
+export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onFileUpload, onAttachmentSelect, availableAttachments = [], title }: ModelViewer3DProps) {
     const [modelSrc, setModelSrc] = useState<string>(initialModelUrl);
     const [fileName, setFileName] = useState<string>("");
     const [fileSize, setFileSize] = useState<number | null>(null);
@@ -167,7 +176,8 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setIsDragOver(true);
+        e.dataTransfer.dropEffect = "copy";
+        if (!isDragOver) setIsDragOver(true);
     };
 
     const handleDragLeave = (e: React.DragEvent) => {
@@ -181,9 +191,42 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
         e.stopPropagation();
         setIsDragOver(false);
 
+        // Check for internal attachment drag (JSON payload from text/plain or application/x-3d-attachment)
+        const rawData = e.dataTransfer.getData("text/plain") || e.dataTransfer.getData("application/x-3d-attachment");
+        if (rawData) {
+            try {
+                const att = JSON.parse(rawData) as (Attachment3D & { is3DAttachment?: boolean });
+                if (att.fileUrl && (att.id || att.is3DAttachment)) {
+                    setModelSrc(att.fileUrl);
+                    setFileName(att.fileName);
+                    setFileSize(att.fileSize);
+                    setIsModelRevealed(true);
+                    setIsLoading(true);
+                    setLoadProgress(0);
+                    if (onAttachmentSelect) {
+                        onAttachmentSelect(att);
+                    }
+                    return;
+                }
+            } catch {}
+        }
+
+        // Otherwise, handle native file drop from desktop
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
             processFile(files[0]);
+        }
+    };
+
+    const handleSelectAttachment = (att: Attachment3D) => {
+        setModelSrc(att.fileUrl);
+        setFileName(att.fileName);
+        setFileSize(att.fileSize);
+        setIsModelRevealed(true);
+        setIsLoading(true);
+        setLoadProgress(0);
+        if (onAttachmentSelect) {
+            onAttachmentSelect(att);
         }
     };
 
@@ -315,29 +358,63 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
             )}
 
             {/* 3D Model Container */}
-            <div style={{
+            <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                style={{
                 position: "relative",
                 width: "100%",
                 borderRadius: "var(--radius-lg)",
                 overflow: "hidden",
-                border: "1px solid var(--border-hover)",
+                border: isDragOver ? "2px solid var(--accent)" : "1px solid var(--border-hover)",
                 background: "linear-gradient(145deg, #0b0d18 0%, #151829 100%)",
-                minHeight: "360px"
+                minHeight: "360px",
+                transition: "border 200ms ease"
             }}>
-                {/* 1. Neutral Placeholder state before upload */}
-                {!modelSrc && !isUploading && (
+                {/* Drag-over overlay indicator */}
+                {isDragOver && (
                     <div style={{
-                        width: "100%",
-                        height: "360px",
+                        position: "absolute",
+                        inset: 0,
+                        zIndex: 50,
+                        background: "rgba(99, 102, 241, 0.25)",
+                        backdropFilter: "blur(4px)",
+                        border: "2px dashed var(--accent)",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
-                        gap: 12,
-                        color: "var(--text-muted)",
-                        padding: 24,
-                        textAlign: "center"
+                        gap: 10,
+                        color: "#ffffff",
+                        pointerEvents: "none"
                     }}>
+                        <ArrowDownToLine size={32} style={{ color: "var(--accent)" }} />
+                        <span style={{ fontSize: 14, fontWeight: 800 }}>Drop 3D Model Here to Load</span>
+                    </div>
+                )}
+                {/* 1. Neutral Placeholder state before upload — also shows available 3D attachments */}
+                {!modelSrc && !isUploading && (
+                    <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        style={{
+                            width: "100%",
+                            minHeight: "360px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 14,
+                            color: "var(--text-muted)",
+                            padding: 24,
+                            textAlign: "center",
+                            border: isDragOver ? "2px dashed var(--accent)" : "2px dashed transparent",
+                            background: isDragOver ? "rgba(99, 102, 241, 0.08)" : "transparent",
+                            transition: "all 200ms ease"
+                        }}
+                    >
                         <div style={{
                             width: 52,
                             height: 52,
@@ -351,11 +428,52 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                             <Box size={26} style={{ color: "var(--accent)", opacity: 0.8 }} />
                         </div>
                         <span style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text-primary)" }}>
-                            No 3D model uploaded yet
+                            No 3D model loaded
                         </span>
-                        <span style={{ fontSize: 11.5, color: "var(--text-muted)", maxWidth: 300, lineHeight: 1.5 }}>
-                            Upload a <code>.glb</code> or <code>.gltf</code> file above to view, inspect, and rotate your 3D asset in real time.
+                        <span style={{ fontSize: 11.5, color: "var(--text-muted)", maxWidth: 320, lineHeight: 1.5 }}>
+                            Upload a <code>.glb</code> / <code>.gltf</code> file above, drag one from the Attachments list, or pick from existing attachments below.
                         </span>
+
+                        {/* Available 3D Attachments Picker */}
+                        {availableAttachments.length > 0 && (
+                            <div style={{ width: "100%", maxWidth: 360, marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                                <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)", marginBottom: 2 }}>
+                                    Available 3D Attachments
+                                </span>
+                                {availableAttachments.map((att) => (
+                                    <button
+                                        key={att.id}
+                                        type="button"
+                                        onClick={() => handleSelectAttachment(att)}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 10,
+                                            padding: "8px 12px",
+                                            borderRadius: "var(--radius)",
+                                            background: "rgba(255, 255, 255, 0.04)",
+                                            border: "1px solid var(--border)",
+                                            cursor: "pointer",
+                                            color: "var(--text-primary)",
+                                            transition: "all 150ms ease",
+                                            width: "100%",
+                                            textAlign: "left"
+                                        }}
+                                        onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "rgba(99, 102, 241, 0.1)"; }}
+                                        onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)"; }}
+                                    >
+                                        <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(99, 102, 241, 0.15)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                            <Box size={14} />
+                                        </div>
+                                        <div style={{ overflow: "hidden", flex: 1 }}>
+                                            <div style={{ fontSize: 11.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.fileName}</div>
+                                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{formatBytes(att.fileSize)}</div>
+                                        </div>
+                                        <ArrowDownToLine size={14} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
