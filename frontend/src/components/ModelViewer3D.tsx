@@ -23,8 +23,8 @@ declare global {
 
 interface ModelViewer3DProps {
     initialModelUrl?: string;
-    onModelChange?: (url: string, fileInfo?: { name: string; size: number }) => void;
-    onFileUpload?: (file: File) => Promise<{ fileUrl: string } | null>;
+    onModelChange?: (url: string, fileInfo?: { name: string; size: number; attachmentId?: string }) => void;
+    onFileUpload?: (file: File) => Promise<{ fileUrl: string; attachmentId?: string } | null>;
     title?: string;
 }
 
@@ -144,7 +144,7 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
                     lastUploadedCloudUrl.current = result.fileUrl;
                     // Do NOT setModelSrc to the cloud URL here. Keep using the localBlobUrl for instant viewing!
                     if (onModelChange) {
-                        onModelChange(result.fileUrl, { name: file.name, size: file.size });
+                        onModelChange(result.fileUrl, { name: file.name, size: file.size, attachmentId: result.attachmentId });
                     }
                 }
             } catch (err) {

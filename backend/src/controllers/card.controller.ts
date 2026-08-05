@@ -26,6 +26,7 @@ const updateCardSchema = z.object({
         title: z.string(),
         modelUrl: z.string(),
         autoRotate: z.boolean().optional(),
+        attachmentId: z.string().optional(),
     })).nullable().optional(),
 });
 

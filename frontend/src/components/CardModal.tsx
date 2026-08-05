@@ -49,7 +49,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const [activity, setActivity] = useState<any[]>([]);
 
     // 3D Model Viewer Sections State
-    interface Model3DSection { id: string; title: string; modelUrl: string; autoRotate: boolean; }
+    interface Model3DSection { id: string; title: string; modelUrl: string; autoRotate: boolean; attachmentId?: string; }
     const [model3DSections, setModel3DSections] = useState<Model3DSection[]>((card.model3DSections as Model3DSection[]) || []);
     const [new3DSectionName, setNew3DSectionName] = useState("");
     const [show3DSectionForm, setShow3DSectionForm] = useState(false);
@@ -79,15 +79,42 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         toast.success(`Created 3D section "${newSec.title}" below attachments`);
     };
 
-    const handleDelete3DSection = (secId: string) => {
+    const handleDelete3DSection = async (secId: string) => {
+        // Find the section being deleted to get its paired attachmentId
+        const sectionToDelete = model3DSections.find(s => s.id === secId);
         const updated = model3DSections.filter(s => s.id !== secId);
         save3DSections(updated);
+
+        // Also delete the paired attachment file from the backend/R2
+        if (sectionToDelete?.attachmentId) {
+            try {
+                await api.delete(`${cardBase}/attachments/${sectionToDelete.attachmentId}`);
+                setAttachments(prev => prev.filter(a => a.id !== sectionToDelete.attachmentId));
+            } catch {
+                console.error("Failed to delete paired 3D attachment from server");
+            }
+        }
         toast.success("3D Section deleted");
     };
 
-    const handleUpdate3DSectionModel = (secId: string, modelUrl: string) => {
-        const updated = model3DSections.map(s => s.id === secId ? { ...s, modelUrl } : s);
+    const handleUpdate3DSectionModel = async (secId: string, modelUrl: string, attachmentId?: string) => {
+        // Find the old section to check if there's a previous attachment to clean up
+        const oldSection = model3DSections.find(s => s.id === secId);
+        const oldAttachmentId = oldSection?.attachmentId;
+
+        // Update the section with new model URL and attachment ID
+        const updated = model3DSections.map(s => s.id === secId ? { ...s, modelUrl, attachmentId } : s);
         save3DSections(updated);
+
+        // If replacing a model, delete the old attachment from the backend/R2
+        if (oldAttachmentId && oldAttachmentId !== attachmentId) {
+            try {
+                await api.delete(`${cardBase}/attachments/${oldAttachmentId}`);
+                setAttachments(prev => prev.filter(a => a.id !== oldAttachmentId));
+            } catch {
+                console.error("Failed to delete old 3D attachment from server");
+            }
+        }
     };
 
     const handleToggleAutoRotate = (secId: string) => {
@@ -762,10 +789,14 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                 <ModelViewer3D
                                     initialModelUrl={sec.modelUrl}
                                     title={sec.title}
-                                    onModelChange={(url) => handleUpdate3DSectionModel(sec.id, url)}
+                                    onModelChange={(url, fileInfo) => {
+                                        // fileInfo carries attachmentId from the upload result
+                                        const attId = (fileInfo as any)?.attachmentId;
+                                        handleUpdate3DSectionModel(sec.id, url, attId);
+                                    }}
                                     onFileUpload={async (file) => {
                                         const result = await handleFileUpload(file);
-                                        return result ? { fileUrl: result.fileUrl } : null;
+                                        return result ? { fileUrl: result.fileUrl, attachmentId: result.id } : null;
                                     }}
                                 />
                             </div>

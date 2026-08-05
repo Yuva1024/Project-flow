@@ -30,7 +30,7 @@ export interface Card {
     creator?: { id: string; name: string; email: string };
     labels?: { cardId: string; labelId: string; label: { id: string; name: string; color: string } }[];
     members?: { cardId: string; userId: string; user: { id: string; name: string; avatarUrl?: string } }[];
-    model3DSections?: { id: string; title: string; modelUrl: string; autoRotate?: boolean }[];
+    model3DSections?: { id: string; title: string; modelUrl: string; autoRotate?: boolean; attachmentId?: string }[];
 }
 
 export interface List {
