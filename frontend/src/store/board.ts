@@ -83,6 +83,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     currentWorkspace: null,
     boards: [],
     currentBoard: null,
+    whiteboards: [],
     isLoading: false,
 
     fetchWorkspaces: async () => {

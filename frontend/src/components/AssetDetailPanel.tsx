@@ -5,13 +5,6 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { X, Download, Trash2, File, Image as ImageIcon, Music, Video, Box, Tag, Plus } from 'lucide-react';
 
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            'model-viewer': any;
-        }
-    }
-}
 
 interface AssetDetailPanelProps {
     assetId: string;
@@ -125,7 +118,8 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
             return <img src={asset.url} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
         }
         if (category === '3d') {
-            return <model-viewer src={asset.url} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
+            const ModelViewer = 'model-viewer' as any;
+            return <ModelViewer src={asset.url} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
         }
         if (category === 'audio') {
             return <audio controls src={asset.url} style={{ width: '100%', marginTop: 'auto', marginBottom: 'auto' }} />;

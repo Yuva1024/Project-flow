@@ -3,23 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, UploadCloud, AlertTriangle, AlertCircle, RefreshCw, Sparkles, FileCode, ArrowDownToLine } from "lucide-react";
 
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-                src?: string;
-                alt?: string;
-                'environment-image'?: string;
-                exposure?: string;
-                'shadow-intensity'?: string;
-                'camera-controls'?: boolean;
-                'auto-rotate'?: boolean;
-                'touch-action'?: string;
-                reveal?: string;
-            };
-        }
-    }
-}
+
 
 interface Attachment3D {
     id: string;

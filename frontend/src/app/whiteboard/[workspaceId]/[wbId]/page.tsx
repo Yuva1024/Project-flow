@@ -123,7 +123,7 @@ export default function WhiteboardPage() {
 
             {/* Canvas */}
             <div style={{ flex: 1, position: "relative" }}>
-                <Tldraw store={store} inferDarkMode onAssetUpload={handleAssetUpload} />
+                <Tldraw store={store} />
             </div>
         </div>
     );
