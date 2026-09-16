@@ -32,21 +32,33 @@ export const uploadAttachment = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Card not found or access denied' });
         }
 
+        // 1. Upload to Cloudflare via S3 utility
         const { fileUrl } = await uploadFile(file);
 
-        const attachment = await prisma.attachment.create({
+        // 2. Create Asset in the Workspace Asset Library
+        const asset = await prisma.asset.create({
             data: {
-                cardId,
+                workspaceId,
                 fileName: file.originalname,
                 fileUrl,
                 fileSize: file.size,
                 mimeType: file.mimetype,
+                uploadedById: userId,
+            },
+        });
+
+        // 3. Link the Asset to the Card
+        await prisma.cardAsset.create({
+            data: {
+                cardId,
+                assetId: asset.id,
             },
         });
 
         await logActivity(cardId, userId, 'attached a file', file.originalname);
 
-        res.status(201).json(attachment);
+        // Return the asset (which frontend expects as an attachment object)
+        res.status(201).json(asset);
     } catch (error: any) {
         if (error?.message === 'File type not allowed') {
             return res.status(400).json({ message: error.message });
@@ -66,11 +78,14 @@ export const getAttachments = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Card not found or access denied' });
         }
 
-        const attachments = await prisma.attachment.findMany({
-            where: { cardId },
+        // Fetch Assets that are linked to this card
+        const assets = await prisma.asset.findMany({
+            where: {
+                cardLinks: { some: { cardId } }
+            },
             orderBy: { createdAt: 'desc' },
         });
-        res.json(attachments);
+        res.json(assets);
     } catch (error) {
         console.error('Get attachments error:', error);
         res.status(500).json({ message: 'Failed to fetch attachments' });
@@ -81,31 +96,27 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
     try {
         const workspaceId = req.params.workspaceId as string;
         const cardId = req.params.cardId as string;
-        const attachmentId = req.params.attachmentId as string;
+        const assetId = req.params.attachmentId as string; // The frontend calls it attachmentId, but it's now an assetId
 
         const card = await assertCardAccess(workspaceId, cardId, req.user!.userId);
         if (!card) {
             return res.status(404).json({ message: 'Card not found or access denied' });
         }
 
-        const attachment = await prisma.attachment.findFirst({
-            where: { id: attachmentId, cardId },
+        // Unlink from the card by deleting the CardAsset relationship
+        await prisma.cardAsset.deleteMany({
+            where: {
+                cardId,
+                assetId,
+            }
         });
 
-        if (!attachment) {
-            return res.status(404).json({ message: 'Attachment not found' });
-        }
+        // DO NOT delete the underlying Asset or the Cloudflare file.
+        // It stays in the Asset Library.
 
-        // Try deleting from R2 or local storage
-        await deleteFile(attachment.fileUrl);
+        await logActivity(cardId, req.user!.userId, 'removed an attachment', '');
 
-        await prisma.attachment.delete({
-            where: { id: attachmentId },
-        });
-
-        await logActivity(cardId, req.user!.userId, 'deleted attachment', attachment.fileName);
-
-        res.json({ message: 'Attachment deleted successfully' });
+        res.json({ message: 'Unlinked attachment from card successfully' });
     } catch (error) {
         console.error('Delete attachment error:', error);
         res.status(500).json({ message: 'Failed to delete attachment' });
