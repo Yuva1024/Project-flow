@@ -784,8 +784,9 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                                 {att.fileName}
                                                                 {is3D && <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(99, 102, 241, 0.15)", color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", flexShrink: 0 }}>3D Model</span>}
                                                             </div>
-                                                            <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+                                                            <div style={{ fontSize: 10.5, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
                                                                 {formatFileSize(att.fileSize)} • {new Date(att.createdAt).toLocaleDateString()}
+                                                                {att.isLibraryAsset && <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: "rgba(16, 185, 129, 0.15)", color: "var(--success, #10b981)" }}>In Asset Library</span>}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -796,10 +797,21 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                                 <Eye size={12} /> 3D Preview
                                                             </button>
                                                         )}
+                                                        {!att.isLibraryAsset && (
+                                                            <button onClick={async () => {
+                                                                try {
+                                                                    const res = await api.post(`${cardBase}/attachments/${att.id}/save-to-library`);
+                                                                    toast.success("Saved to Asset Library");
+                                                                    setAttachments(attachments.map(a => a.id === att.id ? res.data : a));
+                                                                } catch { toast.error("Failed to save to library"); }
+                                                            }} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
+                                                                <UploadCloud size={12} /> Save to Library
+                                                            </button>
+                                                        )}
                                                         <button onClick={() => forceDownload(att.fileUrl, att.fileName)} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
                                                             <Download size={12} /> Download
                                                         </button>
-                                                        <button onClick={() => handleDeleteAttachment(att.id)} style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Delete attachment" onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}>
+                                                        <button onClick={() => handleDeleteAttachment(att.id)} style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title={att.isLibraryAsset ? "Unlink from card" : "Delete attachment"} onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}>
                                                             <Trash2 size={13} />
                                                         </button>
                                                     </div>

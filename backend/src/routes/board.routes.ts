@@ -60,6 +60,7 @@ import {
     uploadAttachment,
     getAttachments,
     deleteAttachment,
+    saveToAssetLibrary,
 } from '../controllers/attachment.controller';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
 
@@ -146,5 +147,6 @@ router.get('/:boardId/cards/:cardId/activity', getActivityLog);
 router.post('/:boardId/cards/:cardId/attachments', uploadLimiter, upload.single('file'), uploadAttachment);
 router.get('/:boardId/cards/:cardId/attachments', getAttachments);
 router.delete('/:boardId/cards/:cardId/attachments/:attachmentId', deleteAttachment);
+router.post('/:boardId/cards/:cardId/attachments/:attachmentId/save-to-library', saveToAssetLibrary);
 
 export default router;
