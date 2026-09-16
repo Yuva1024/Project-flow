@@ -10,6 +10,9 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Set this in the Render dashboard to your deployed frontend URL (required for locked-down CORS)
+      - key: CORS_ORIGIN
+        sync: false
       - key: NODE_ENV
         value: production
       - key: PORT

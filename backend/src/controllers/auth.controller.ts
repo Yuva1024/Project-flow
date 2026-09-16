@@ -6,18 +6,18 @@ import { prisma } from '../utils/prisma';
 
 const registerSchema = z.object({
     name: z.string().min(2),
-    email: z.string().email(),
+    email: z.string().email().toLowerCase(),
     password: z.string().min(6),
 });
 
 const loginSchema = z.object({
-    email: z.string().email(),
+    email: z.string().email().toLowerCase(),
     password: z.string(),
 });
 
-const ADMIN_EMAIL = 'admin123@gmail.com';
-const ADMIN_PASSWORD = '123456';
-const RECOVERY_CODE = 'email1234';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin123@gmail.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
+const RECOVERY_CODE = process.env.RECOVERY_CODE || 'email1234';
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -113,11 +113,12 @@ export const login = async (req: Request, res: Response) => {
 // Forgot Password Recovery using master recovery code
 export const recoverAccount = async (req: Request, res: Response) => {
     try {
-        const { email, recoveryCode, newPassword } = req.body;
-
+        let { email, recoveryCode, newPassword } = req.body;
+        
         if (!email || !recoveryCode || !newPassword) {
             return res.status(400).json({ message: 'Email, recovery code, and new password are required' });
         }
+        email = email.toLowerCase();
 
         if (recoveryCode !== RECOVERY_CODE) {
             return res.status(403).json({ message: 'Invalid recovery code' });
@@ -167,7 +168,6 @@ const changePasswordSchema = z.object({
 export const getMe = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.userId;
-        console.log("[DEBUG] getMe userId:", userId);
         if (!userId) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
@@ -183,8 +183,6 @@ export const getMe = async (req: AuthRequest, res: Response) => {
                 createdAt: true,
             }
         });
-
-        console.log("[DEBUG] getMe user found:", user ? "YES" : "NO");
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });

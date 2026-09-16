@@ -50,6 +50,16 @@ export const reorderLists = async (req: AuthRequest, res: Response) => {
 
         const { orderedListIds } = parsed.data;
 
+        // Verify all provided lists belong to this board
+        const boardLists = await prisma.list.findMany({
+            where: { boardId },
+            select: { id: true },
+        });
+        const boardListIds = new Set(boardLists.map(l => l.id));
+        if (orderedListIds.some(id => !boardListIds.has(id))) {
+            return res.status(400).json({ message: 'Some lists do not belong to this board' });
+        }
+
         // Batch update in a transaction
         await prisma.$transaction(
             orderedListIds.map((listId, index) =>
@@ -180,9 +190,17 @@ export const reorderCards = async (req: AuthRequest, res: Response) => {
         }
 
         if (card.listId !== targetListId) {
-            const oldList = await prisma.list.findUnique({ where: { id: card.listId } });
-            const newList = await prisma.list.findUnique({ where: { id: targetListId } });
-            await logActivity(cardId, userId, 'moved card', `from "${oldList?.title}" to "${newList?.title}"`);
+            const [oldTitle, newTitle] = await (async () => {
+                const lists = await prisma.list.findMany({
+                    where: { id: { in: [card.listId, targetListId] } },
+                    select: { id: true, title: true },
+                });
+                return [
+                    lists.find(l => l.id === card.listId)?.title,
+                    lists.find(l => l.id === targetListId)?.title,
+                ] as const;
+            })();
+            await logActivity(cardId, userId, 'moved card', `from "${oldTitle}" to "${newTitle}"`);
         }
 
         // Return the updated board state

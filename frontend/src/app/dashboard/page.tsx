@@ -1,12 +1,16 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useBoardStore } from "@/store/board";
 import toast from "react-hot-toast";
-import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield, Menu } from "lucide-react";
+import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield, Menu, Upload } from "lucide-react";
 import WorkspaceMembersModal from "@/components/WorkspaceMembersModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import CommandPalette from "@/components/CommandPalette";
+import AssetLibrary from "@/components/AssetLibrary";
+import AssetDetailPanel from "@/components/AssetDetailPanel";
 import { useTheme } from "@/hooks/useTheme";
 
 export default function DashboardPage() {
@@ -14,16 +18,20 @@ export default function DashboardPage() {
     const { theme, toggleTheme } = useTheme();
     const { user, logout, loadUser, token, isLoading: authLoading, updateProfile, changePassword } = useAuthStore();
     const {
-        workspaces, boards, fetchWorkspaces, fetchBoards, createWorkspace, createBoard, setCurrentWorkspace, currentWorkspace, isLoading,
-        updateWorkspace, deleteWorkspace, updateBoard, deleteBoard
+        workspaces, boards, whiteboards, fetchWorkspaces, fetchBoards, fetchWhiteboards, createWorkspace, createBoard, createWhiteboard, setCurrentWorkspace, currentWorkspace, isLoading,
+        updateWorkspace, deleteWorkspace, updateBoard, deleteBoard, deleteWhiteboard
     } = useBoardStore();
 
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [showCreateWs, setShowCreateWs] = useState(false);
     const [showCreateBoard, setShowCreateBoard] = useState(false);
+    const [showCreateWhiteboard, setShowCreateWhiteboard] = useState(false);
+    const [activeTab, setActiveTab] = useState<"boards" | "whiteboards" | "assets">("boards");
+    const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
     const [showMembers, setShowMembers] = useState(false);
     const [wsName, setWsName] = useState("");
     const [boardTitle, setBoardTitle] = useState("");
+    const [whiteboardName, setWhiteboardName] = useState("");
 
     // Workspace edit/delete state
     const [editingWsId, setEditingWsId] = useState<string | null>(null);
@@ -34,6 +42,9 @@ export default function DashboardPage() {
     const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
     const [editBoardTitle, setEditBoardTitle] = useState("");
     const [showDeleteBoardModal, setShowDeleteBoardModal] = useState<string | null>(null);
+
+    // Whiteboard edit/delete state
+    const [showDeleteWhiteboardModal, setShowDeleteWhiteboardModal] = useState<string | null>(null);
 
     // Profile settings modal state
     const [showProfileModal, setShowProfileModal] = useState(false);
@@ -47,7 +58,10 @@ export default function DashboardPage() {
         if (token) fetchWorkspaces().catch(() => { });
     }, [token, authLoading]);
     useEffect(() => {
-        if (currentWorkspace) fetchBoards(currentWorkspace.id).catch(() => { });
+        if (currentWorkspace) {
+            fetchBoards(currentWorkspace.id).catch(() => { });
+            fetchWhiteboards(currentWorkspace.id).catch(() => { });
+        }
     }, [currentWorkspace]);
     useEffect(() => {
         if (user) {
@@ -115,6 +129,24 @@ export default function DashboardPage() {
         }
     };
 
+    const handleCreateWhiteboard = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!whiteboardName.trim() || !currentWorkspace) return;
+        try { await createWhiteboard(currentWorkspace.id, whiteboardName.trim()); setWhiteboardName(""); setShowCreateWhiteboard(false); toast.success("Whiteboard created"); }
+        catch (err: any) { toast.error(err.response?.data?.message || "Failed"); }
+    };
+
+    const handleDeleteWhiteboard = async (wbId: string) => {
+        if (!currentWorkspace) return;
+        try {
+            await deleteWhiteboard(currentWorkspace.id, wbId);
+            setShowDeleteWhiteboardModal(null);
+            toast.success("Whiteboard deleted");
+        } catch (err: any) {
+            toast.error(err.response?.data?.message || "Failed to delete whiteboard");
+        }
+    };
+
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -153,21 +185,19 @@ export default function DashboardPage() {
             {/* Sidebar */}
             <aside className={`sidebar-offcanvas ${mobileMenuOpen ? 'open' : ''}`} style={{
                 width: 270, flexShrink: 0, display: "flex", flexDirection: "column",
-                background: "var(--bg-surface)", borderRight: "1px solid var(--border)",
-                backdropFilter: "blur(24px) saturate(140%)"
+                background: "var(--bg-surface)", borderRight: "1px solid var(--border)"
             }}>
                 {/* Brand */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{
-                            width: 34, height: 34, borderRadius: 9,
-                            background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            boxShadow: "0 4px 12px rgba(99, 102, 241, 0.25)"
+                            width: 32, height: 32, borderRadius: 8,
+                            background: "var(--accent)",
+                            display: "flex", alignItems: "center", justifyContent: "center"
                         }}>
                             <FolderKanban size={15} color="white" />
                         </div>
-                        <span style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em" }}>ProjectFlow</span>
+                        <span style={{ fontWeight: 750, fontSize: 15.5, letterSpacing: "-0.02em" }}>ProjectFlow</span>
                     </div>
                     <button onClick={() => setMobileMenuOpen(false)} className="btn-ghost" style={{ padding: 6, display: "flex", alignItems: "center" }}>
                         <X size={16} />
@@ -213,7 +243,7 @@ export default function DashboardPage() {
                                     <div style={{
                                         width: 28, height: 28, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center",
                                         fontSize: 11, fontWeight: 800, flexShrink: 0, color: "white",
-                                        background: active ? "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)" : "var(--bg-hover)",
+                                        background: active ? "var(--accent)" : "var(--bg-hover)",
                                         boxShadow: active ? "0 2px 6px rgba(168, 85, 247, 0.2)" : "none",
                                     }}>
                                         {ws.name.charAt(0).toUpperCase()}
@@ -234,12 +264,12 @@ export default function DashboardPage() {
                         <div style={{
                             display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
                             borderRadius: "var(--radius)", background: "var(--bg-card)", border: "1px solid var(--border)",
-                            backdropFilter: "blur(10px)", marginBottom: 10, position: "relative"
+                            marginBottom: 10, position: "relative"
                         }}>
                             <div style={{
                                 width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center",
                                 justifyContent: "center", fontSize: 12, fontWeight: 700, 
-                                background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)", color: "white", flexShrink: 0
+                                background: "var(--accent)", color: "white", flexShrink: 0
                             }}>
                                 {user.name?.charAt(0).toUpperCase()}
                             </div>
@@ -347,7 +377,18 @@ export default function DashboardPage() {
                                             Delete
                                         </button>
                                     )}
-                                    <button onClick={() => setShowCreateBoard(true)} className="btn-primary" style={{ padding: "7px 14px", fontSize: 12 }}><Plus size={13} /> New Board</button>
+                                    {activeTab === "boards" && (
+                                        <button onClick={() => setShowCreateBoard(true)} className="btn-primary" style={{ padding: "7px 14px", fontSize: 12 }}><Plus size={13} /> New Board</button>
+                                    )}
+                                    {activeTab === "whiteboards" && (
+                                        <button onClick={() => setShowCreateWhiteboard(true)} className="btn-primary" style={{ padding: "7px 14px", fontSize: 12 }}><Plus size={13} /> New Whiteboard</button>
+                                    )}
+                                    {activeTab === "assets" && (
+                                        <label className="btn-primary" style={{ padding: "6px 14px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                                            <Upload size={13} /> Upload Asset
+                                            <input type="file" multiple hidden onChange={() => toast.success("Use the upload feature inside the asset library")} />
+                                        </label>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -371,8 +412,24 @@ export default function DashboardPage() {
                 {currentWorkspace ? (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
 
+                        {/* Tab Navigation */}
+                        <div style={{ display: "flex", gap: 16, borderBottom: "1px solid var(--border)", padding: "0 48px", marginTop: 10 }}>
+                            <button 
+                                onClick={() => setActiveTab("boards")}
+                                style={{ background: "none", border: "none", borderBottom: activeTab === "boards" ? "2px solid var(--accent)" : "2px solid transparent", color: activeTab === "boards" ? "var(--text-primary)" : "var(--text-muted)", padding: "12px 4px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}
+                            >Kanban Boards</button>
+                            <button 
+                                onClick={() => setActiveTab("whiteboards")}
+                                style={{ background: "none", border: "none", borderBottom: activeTab === "whiteboards" ? "2px solid var(--accent)" : "2px solid transparent", color: activeTab === "whiteboards" ? "var(--text-primary)" : "var(--text-muted)", padding: "12px 4px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}
+                            >Whiteboards</button>
+                            <button
+                                onClick={() => setActiveTab("assets")}
+                                style={{ background: "none", borderTop: "none", borderLeft: "none", borderRight: "none", borderBottom: activeTab === "assets" ? "2px solid var(--accent)" : "2px solid transparent", color: activeTab === "assets" ? "var(--text-primary)" : "var(--text-muted)", padding: "12px 4px", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}
+                            >Asset Library</button>
+                        </div>
+
                         {/* Create Board Inline Panel */}
-                        {showCreateBoard && (
+                        {showCreateBoard && activeTab === "boards" && (
                             <div style={{ padding: "24px 48px 0" }}>
                                 <div className="glass-panel" style={{ maxWidth: 440, padding: 24, borderRadius: "var(--radius-lg)", border: "1px solid var(--border-hover)", boxShadow: "var(--shadow)" }}>
                                     <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 16 }}>Create a new board</h3>
@@ -387,95 +444,112 @@ export default function DashboardPage() {
                             </div>
                         )}
 
-                        {/* Board Grid */}
-                        <div style={{ padding: "36px 48px", flex: 1 }}>
-                            {boards.length > 0 ? (
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
-                                    {boards.map((board) => (
-                                        <div key={board.id}
-                                            className="glass-panel-interactive"
-                                            style={{
-                                                position: "relative", display: "flex", flexDirection: "column", borderRadius: "var(--radius-lg)",
-                                                border: "1px solid var(--border)", background: "var(--bg-card)",
-                                            }}
-                                        >
-                                            {editingBoardId === board.id ? (
-                                                <form onSubmit={(e) => handleRenameBoard(e, board.id)} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
-                                                    <input
-                                                        type="text"
-                                                        value={editBoardTitle}
-                                                        onChange={(e) => setEditBoardTitle(e.target.value)}
-                                                        style={{ fontSize: 13.5, fontWeight: 700, padding: 8, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-active)", background: "var(--bg-surface)" }}
-                                                        autoFocus
-                                                    />
-                                                    <div style={{ display: "flex", gap: 8 }}>
-                                                        <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: "5px 12px" }}>Save</button>
-                                                        <button type="button" onClick={() => setEditingBoardId(null)} className="btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }}>Cancel</button>
-                                                    </div>
-                                                </form>
-                                            ) : (
-                                                <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 140 }}>
-                                                    <div style={{ padding: 24, cursor: "pointer", flex: 1, display: "flex", flexDirection: "column" }} onClick={() => router.push(`/board/${currentWorkspace.id}/${board.id}`)}>
-                                                        {/* Top icon and actions */}
-                                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                                                            <div style={{
-                                                                width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                                                                background: "var(--accent-soft)", border: "1px solid var(--border)"
-                                                            }}>
-                                                                <LayoutDashboard size={16} style={{ color: "var(--accent)" }} />
-                                                            </div>
-                                                            <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEditingBoardId(board.id);
-                                                                        setEditBoardTitle(board.title);
-                                                                    }}
-                                                                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", borderRadius: 6, transition: "color 150ms" }}
-                                                                    onMouseOver={(e) => e.currentTarget.style.color = "var(--text-primary)"}
-                                                                    onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
-                                                                    title="Rename board"
-                                                                >
-                                                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => setShowDeleteBoardModal(board.id)}
-                                                                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", borderRadius: 6, transition: "color 150ms" }}
-                                                                    onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"}
-                                                                    onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
-                                                                    title="Delete board"
-                                                                >
-                                                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Title */}
-                                                        <h3 style={{ fontSize: 14.5, fontWeight: 750, color: "var(--text-primary)", marginBottom: 6 }}>{board.title}</h3>
-                                                        
-                                                        {/* Status items */}
-                                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: "auto" }}>
-                                                            <span style={{
-                                                                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5,
-                                                                textTransform: "uppercase", background: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)"
-                                                            }}>
-                                                                {board.visibility?.toLowerCase()}
-                                                            </span>
-                                                            <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
-                                                                {board._count?.lists ?? 0} lists
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                        {/* Create Whiteboard Inline Panel */}
+                        {showCreateWhiteboard && activeTab === "whiteboards" && (
+                            <div style={{ padding: "24px 48px 0" }}>
+                                <div className="glass-panel" style={{ maxWidth: 440, padding: 24, borderRadius: "var(--radius-lg)", border: "1px solid var(--border-hover)", boxShadow: "var(--shadow)" }}>
+                                    <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 16 }}>Create a new whiteboard</h3>
+                                    <form onSubmit={handleCreateWhiteboard}>
+                                        <input type="text" value={whiteboardName} onChange={(e) => setWhiteboardName(e.target.value)} placeholder="Whiteboard name" style={{ marginBottom: 16 }} autoFocus />
+                                        <div style={{ display: "flex", gap: 8 }}>
+                                            <button type="submit" className="btn-primary" style={{ fontSize: 12, flex: 1 }}>Create Whiteboard</button>
+                                            <button type="button" onClick={() => setShowCreateWhiteboard(false)} className="btn-ghost" style={{ fontSize: 12 }}>Cancel</button>
                                         </div>
-                                    ))}
+                                    </form>
+                                </div>
+                            </div>
+                        )}
 
-                                    {/* Create Board Quick Placeholder */}
-                                    <div
-                                        onClick={() => setShowCreateBoard(true)}
-                                        style={{
-                                            minHeight: 140, borderRadius: "var(--radius-lg)", border: "1.5px dashed var(--border-active)",
-                                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                        {/* Grid */}
+                        <div style={{ padding: "36px 48px", flex: 1 }}>
+                            {activeTab === "boards" ? (
+                                boards.length > 0 ? (
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
+                                        {boards.map((board) => (
+                                            <div key={board.id}
+                                                className="glass-panel-interactive"
+                                                style={{
+                                                    position: "relative", display: "flex", flexDirection: "column", borderRadius: "var(--radius-lg)",
+                                                    border: "1px solid var(--border)", background: "var(--bg-card)",
+                                                }}
+                                            >
+                                                {editingBoardId === board.id ? (
+                                                    <form onSubmit={(e) => handleRenameBoard(e, board.id)} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+                                                        <input
+                                                            type="text"
+                                                            value={editBoardTitle}
+                                                            onChange={(e) => setEditBoardTitle(e.target.value)}
+                                                            style={{ fontSize: 13.5, fontWeight: 700, padding: 8, borderRadius: "var(--radius-sm)", border: "1px solid var(--border-active)", background: "var(--bg-surface)" }}
+                                                            autoFocus
+                                                        />
+                                                        <div style={{ display: "flex", gap: 8 }}>
+                                                            <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: "5px 12px" }}>Save</button>
+                                                            <button type="button" onClick={() => setEditingBoardId(null)} className="btn-ghost" style={{ fontSize: 11, padding: "5px 10px" }}>Cancel</button>
+                                                        </div>
+                                                    </form>
+                                                ) : (
+                                                    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 140 }}>
+                                                        <div style={{ padding: 24, cursor: "pointer", flex: 1, display: "flex", flexDirection: "column" }} onClick={() => router.push(`/board/${currentWorkspace.id}/${board.id}`)}>
+                                                            {/* Top icon and actions */}
+                                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                                                                <div style={{
+                                                                    width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                                                                    background: "var(--accent-soft)", border: "1px solid var(--border)"
+                                                                }}>
+                                                                    <LayoutDashboard size={16} style={{ color: "var(--accent)" }} />
+                                                                </div>
+                                                                <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingBoardId(board.id);
+                                                                            setEditBoardTitle(board.title);
+                                                                        }}
+                                                                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", borderRadius: 6, transition: "color 150ms" }}
+                                                                        onMouseOver={(e) => e.currentTarget.style.color = "var(--text-primary)"}
+                                                                        onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                                                                        title="Rename board"
+                                                                    >
+                                                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setShowDeleteBoardModal(board.id)}
+                                                                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", borderRadius: 6, transition: "color 150ms" }}
+                                                                        onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"}
+                                                                        onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                                                                        title="Delete board"
+                                                                    >
+                                                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Title */}
+                                                            <h3 style={{ fontSize: 14.5, fontWeight: 750, color: "var(--text-primary)", marginBottom: 6 }}>{board.title}</h3>
+                                                            
+                                                            {/* Status items */}
+                                                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: "auto" }}>
+                                                                <span style={{
+                                                                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 5,
+                                                                    textTransform: "uppercase", background: "var(--bg-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)"
+                                                                }}>
+                                                                    {board.visibility?.toLowerCase()}
+                                                                </span>
+                                                                <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
+                                                                    {board._count?.lists ?? 0} lists
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+
+                                        {/* Create Board Quick Placeholder */}
+                                        <div
+                                            onClick={() => setShowCreateBoard(true)}
+                                            style={{
+                                                minHeight: 140, borderRadius: "var(--radius-lg)", border: "1.5px dashed var(--border-active)",
+                                                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                                             cursor: "pointer", transition: "all 200ms var(--ease)", background: "transparent", gap: 10
                                         }}
                                         onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-glow)"; }}
@@ -502,6 +576,82 @@ export default function DashboardPage() {
                                     <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 20 }}>Create your first board in this workspace to get started</p>
                                     <button onClick={() => setShowCreateBoard(true)} className="btn-primary" style={{ padding: "8px 16px", fontSize: 12 }}><Plus size={13} /> Create Board</button>
                                 </div>
+                            ) : null) : activeTab === "whiteboards" ? (
+                                whiteboards && whiteboards.length > 0 ? (
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 }}>
+                                        {whiteboards.map((wb) => (
+                                            <div key={wb.id}
+                                                className="glass-panel-interactive"
+                                                style={{
+                                                    position: "relative", display: "flex", flexDirection: "column", borderRadius: "var(--radius-lg)",
+                                                    border: "1px solid var(--border)", background: "var(--bg-card)",
+                                                }}
+                                            >
+                                                <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 140 }}>
+                                                    <div style={{ padding: 24, cursor: "pointer", flex: 1, display: "flex", flexDirection: "column" }} onClick={() => router.push(`/whiteboard/${currentWorkspace.id}/${wb.id}`)}>
+                                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                                                            <div style={{
+                                                                width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                                                                background: "rgba(59, 130, 246, 0.1)", border: "1px solid rgba(59, 130, 246, 0.2)"
+                                                            }}>
+                                                                <LayoutDashboard size={16} style={{ color: "#3b82f6" }} />
+                                                            </div>
+                                                            <div style={{ display: "flex", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                                                                <button
+                                                                    onClick={() => setShowDeleteWhiteboardModal(wb.id)}
+                                                                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, display: "flex", borderRadius: 6, transition: "color 150ms" }}
+                                                                    onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"}
+                                                                    onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                                                                    title="Delete whiteboard"
+                                                                >
+                                                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <h3 style={{ fontSize: 14.5, fontWeight: 750, color: "var(--text-primary)", marginBottom: 6 }}>{wb.name}</h3>
+                                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: "auto" }}>
+                                                            <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 500 }}>
+                                                                Updated {new Date(wb.updatedAt).toLocaleDateString()}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div
+                                            onClick={() => setShowCreateWhiteboard(true)}
+                                            style={{
+                                                minHeight: 140, borderRadius: "var(--radius-lg)", border: "1.5px dashed var(--border-active)",
+                                                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                                                cursor: "pointer", transition: "all 200ms var(--ease)", background: "transparent", gap: 10
+                                            }}
+                                            onMouseOver={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-glow)"; }}
+                                            onMouseOut={(e) => { e.currentTarget.style.borderColor = "var(--border-active)"; e.currentTarget.style.background = "transparent"; }}
+                                        >
+                                            <div style={{
+                                                width: 32, height: 32, borderRadius: "50%", border: "1.5px solid var(--border-active)",
+                                                display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-secondary)"
+                                            }}>
+                                                <Plus size={16} />
+                                            </div>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)" }}>New Whiteboard</span>
+                                        </div>
+                                    </div>
+                                ) : !isLoading ? (
+                                    <div style={{ textAlign: "center", padding: "120px 0", color: "var(--text-muted)" }}>
+                                        <div style={{
+                                            width: 52, height: 52, borderRadius: 14, margin: "0 auto 20px", display: "flex",
+                                            alignItems: "center", justifyContent: "center", background: "var(--bg-card)", border: "1px solid var(--border)"
+                                        }}>
+                                            <LayoutDashboard size={22} style={{ color: "var(--text-muted)" }} />
+                                        </div>
+                                        <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 6 }}>No whiteboards yet</p>
+                                        <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 20 }}>Create your first whiteboard to start drawing</p>
+                                        <button onClick={() => setShowCreateWhiteboard(true)} className="btn-primary" style={{ padding: "8px 16px", fontSize: 12 }}><Plus size={13} /> Create Whiteboard</button>
+                                    </div>
+                                ) : null
+                            ) : activeTab === "assets" ? (
+                                <AssetLibrary workspaceId={currentWorkspace.id} onSelectAsset={(id) => setSelectedAssetId(id)} />
                             ) : null}
                         </div>
                     </div>
@@ -522,91 +672,132 @@ export default function DashboardPage() {
             </main>
 
             {/* Profile Settings Modal */}
-            {showProfileModal && user && (
-                <div className="overlay">
-                    <div className="overlay-backdrop" onClick={() => setShowProfileModal(false)} />
-                    <div className="overlay-content" style={{ maxWidth: 460, width: "100%", border: "1px solid var(--border-active)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
-                            <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>My Settings</h3>
-                            <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--text-muted)", display: "flex" }}><X size={18} /></button>
-                        </div>
-                        
-                        <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: 24 }}>
-                            {/* Update Profile Form */}
-                            <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                                <h4 style={{ fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Update Profile</h4>
-                                <div>
-                                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Email Address</label>
-                                    <input type="text" value={user.email} disabled style={{ background: "var(--bg-elevated)", color: "var(--text-muted)", cursor: "not-allowed" }} />
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Display Name</label>
-                                    <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Your Name" required />
-                                </div>
-                                <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end", padding: "8px 16px", fontSize: 12 }}>Save Profile</button>
-                            </form>
+            <AnimatePresence>
+                {showProfileModal && user && (
+                    <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                        <div className="overlay-backdrop" onClick={() => setShowProfileModal(false)} />
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 460, width: "100%", border: "1px solid var(--border-active)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>My Settings</h3>
+                                <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--text-muted)", display: "flex" }}><X size={18} /></button>
+                            </div>
+                            
+                            <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: 24 }}>
+                                {/* Update Profile Form */}
+                                <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                                    <h4 style={{ fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Update Profile</h4>
+                                    <div>
+                                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Email Address</label>
+                                        <input type="text" value={user.email} disabled style={{ background: "var(--bg-elevated)", color: "var(--text-muted)", cursor: "not-allowed" }} />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Display Name</label>
+                                        <input type="text" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Your Name" required />
+                                    </div>
+                                    <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end", padding: "8px 16px", fontSize: 12 }}>Save Profile</button>
+                                </form>
 
-                            <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
+                                <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
 
-                            {/* Change Password Form */}
-                            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                                <h4 style={{ fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Change Password</h4>
-                                <div>
-                                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Current Password</label>
-                                    <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="••••••••" required />
-                                </div>
-                                <div>
-                                    <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>New Password</label>
-                                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" required />
-                                </div>
-                                <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end", padding: "8px 16px", fontSize: 12 }}>Change Password</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                {/* Change Password Form */}
+                                <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                                    <h4 style={{ fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Change Password</h4>
+                                    <div>
+                                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Current Password</label>
+                                        <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} placeholder="••••••••" required />
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>New Password</label>
+                                        <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="••••••••" required />
+                                    </div>
+                                    <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end", padding: "8px 16px", fontSize: 12 }}>Change Password</button>
+                                </form>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Delete Workspace Modal */}
-            {showDeleteWsModal && currentWorkspace && (
-                <div className="overlay">
-                    <div className="overlay-backdrop" onClick={() => setShowDeleteWsModal(false)} />
-                    <div className="overlay-content" style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
-                        <div style={{ padding: 24 }}>
-                            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Workspace</h3>
-                            <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
-                                Are you sure you want to permanently delete <strong>{currentWorkspace.name}</strong>? This action will cascade delete all boards, lists, cards, and activity logs. This cannot be undone.
-                            </p>
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                                <button onClick={() => setShowDeleteWsModal(false)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12 }}>Cancel</button>
-                                <button onClick={handleDeleteWorkspace} className="btn-primary" style={{ background: "var(--danger)", borderColor: "var(--danger)", padding: "8px 16px", fontSize: 12 }}>Delete</button>
+            <AnimatePresence>
+                {showDeleteWsModal && currentWorkspace && (
+                    <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                        <div className="overlay-backdrop" onClick={() => setShowDeleteWsModal(false)} />
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                            <div style={{ padding: 24 }}>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Workspace</h3>
+                                <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
+                                    Are you sure you want to permanently delete <strong>{currentWorkspace.name}</strong>? This action will cascade delete all boards, lists, cards, and activity logs. This cannot be undone.
+                                </p>
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                                    <button onClick={() => setShowDeleteWsModal(false)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12 }}>Cancel</button>
+                                    <button onClick={handleDeleteWorkspace} className="btn-primary" style={{ background: "var(--danger)", borderColor: "var(--danger)", padding: "8px 16px", fontSize: 12 }}>Delete</button>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Delete Board Modal */}
-            {showDeleteBoardModal && (
-                <div className="overlay">
-                    <div className="overlay-backdrop" onClick={() => setShowDeleteBoardModal(null)} />
-                    <div className="overlay-content" style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
-                        <div style={{ padding: 24 }}>
-                            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Board</h3>
-                            <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
-                                Are you sure you want to delete this board? All lists, cards, comment threads, labels, and checklist items inside will be permanently lost.
-                            </p>
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                                <button onClick={() => setShowDeleteBoardModal(null)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12 }}>Cancel</button>
-                                <button onClick={() => handleDeleteBoard(showDeleteBoardModal)} className="btn-primary" style={{ background: "var(--danger)", borderColor: "var(--danger)", padding: "8px 16px", fontSize: 12 }}>Delete</button>
+            <AnimatePresence>
+                {showDeleteBoardModal && (
+                    <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                        <div className="overlay-backdrop" onClick={() => setShowDeleteBoardModal(null)} />
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                            <div style={{ padding: 24 }}>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Board</h3>
+                                <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
+                                    Are you sure you want to delete this board? All lists, cards, comment threads, labels, and checklist items inside will be permanently lost.
+                                </p>
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                                    <button onClick={() => setShowDeleteBoardModal(null)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12 }}>Cancel</button>
+                                    <button onClick={() => handleDeleteBoard(showDeleteBoardModal)} className="btn-primary" style={{ background: "var(--danger)", borderColor: "var(--danger)", padding: "8px 16px", fontSize: 12 }}>Delete</button>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-            {showMembers && currentWorkspace && (
-                <WorkspaceMembersModal workspaceId={currentWorkspace.id} workspaceName={currentWorkspace.name} onClose={() => setShowMembers(false)} />
-            )}
+            {/* Delete Whiteboard Modal */}
+            <AnimatePresence>
+                {showDeleteWhiteboardModal && (
+                    <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                        <div className="overlay-backdrop" onClick={() => setShowDeleteWhiteboardModal(null)} />
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                            <div style={{ padding: 24 }}>
+                                <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Whiteboard</h3>
+                                <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
+                                    Are you sure you want to delete this whiteboard? All drawn elements will be permanently lost.
+                                </p>
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                                    <button onClick={() => setShowDeleteWhiteboardModal(null)} className="btn-ghost" style={{ padding: "8px 14px", fontSize: 12 }}>Cancel</button>
+                                    <button onClick={() => handleDeleteWhiteboard(showDeleteWhiteboardModal)} className="btn-primary" style={{ background: "var(--danger)", borderColor: "var(--danger)", padding: "8px 16px", fontSize: 12 }}>Delete</button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showMembers && currentWorkspace && (
+                    <WorkspaceMembersModal workspaceId={currentWorkspace.id} workspaceName={currentWorkspace.name} onClose={() => setShowMembers(false)} />
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {selectedAssetId && currentWorkspace && (
+                    <AssetDetailPanel
+                        assetId={selectedAssetId}
+                        workspaceId={currentWorkspace.id}
+                        onClose={() => setSelectedAssetId(null)}
+                    />
+                )}
+            </AnimatePresence>
+
+            <CommandPalette />
         </div>
     );
 }

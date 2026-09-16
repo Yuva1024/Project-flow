@@ -4,18 +4,32 @@ import { uploadFile, deleteFile } from '../utils/s3';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
 
+// Verify requester is a workspace member and the card belongs to that workspace
+async function assertCardAccess(workspaceId: string, cardId: string, userId: string) {
+    const membership = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId } },
+    });
+    if (!membership) return null;
+
+    return prisma.card.findFirst({
+        where: { id: cardId, list: { board: { workspaceId } } },
+    });
+}
+
 export const uploadAttachment = async (req: AuthRequest, res: Response) => {
     try {
+        const workspaceId = req.params.workspaceId as string;
         const cardId = req.params.cardId as string;
         const file = req.file;
+        const userId = req.user!.userId;
 
         if (!file) {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
-        const card = await prisma.card.findUnique({ where: { id: cardId } });
+        const card = await assertCardAccess(workspaceId, cardId, userId);
         if (!card) {
-            return res.status(404).json({ message: 'Card not found' });
+            return res.status(404).json({ message: 'Card not found or access denied' });
         }
 
         const { fileUrl } = await uploadFile(file);
@@ -30,20 +44,28 @@ export const uploadAttachment = async (req: AuthRequest, res: Response) => {
             },
         });
 
-        if (req.user?.userId) {
-            await logActivity(cardId, req.user.userId, 'attached a file', file.originalname);
-        }
+        await logActivity(cardId, userId, 'attached a file', file.originalname);
 
         res.status(201).json(attachment);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.message === 'File type not allowed') {
+            return res.status(400).json({ message: error.message });
+        }
         console.error('Upload attachment error:', error);
         res.status(500).json({ message: 'Failed to upload attachment' });
     }
 };
 
-export const getAttachments = async (req: Request, res: Response) => {
+export const getAttachments = async (req: AuthRequest, res: Response) => {
     try {
+        const workspaceId = req.params.workspaceId as string;
         const cardId = req.params.cardId as string;
+
+        const card = await assertCardAccess(workspaceId, cardId, req.user!.userId);
+        if (!card) {
+            return res.status(404).json({ message: 'Card not found or access denied' });
+        }
+
         const attachments = await prisma.attachment.findMany({
             where: { cardId },
             orderBy: { createdAt: 'desc' },
@@ -57,11 +79,17 @@ export const getAttachments = async (req: Request, res: Response) => {
 
 export const deleteAttachment = async (req: AuthRequest, res: Response) => {
     try {
+        const workspaceId = req.params.workspaceId as string;
         const cardId = req.params.cardId as string;
         const attachmentId = req.params.attachmentId as string;
 
-        const attachment = await prisma.attachment.findUnique({
-            where: { id: attachmentId },
+        const card = await assertCardAccess(workspaceId, cardId, req.user!.userId);
+        if (!card) {
+            return res.status(404).json({ message: 'Card not found or access denied' });
+        }
+
+        const attachment = await prisma.attachment.findFirst({
+            where: { id: attachmentId, cardId },
         });
 
         if (!attachment) {
@@ -75,9 +103,7 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
             where: { id: attachmentId },
         });
 
-        if (req.user?.userId) {
-            await logActivity(cardId, req.user.userId, 'deleted attachment', attachment.fileName);
-        }
+        await logActivity(cardId, req.user!.userId, 'deleted attachment', attachment.fileName);
 
         res.json({ message: 'Attachment deleted successfully' });
     } catch (error) {

@@ -1,23 +1,26 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, memo, useMemo } from "react";
+import { AnimatePresence } from "framer-motion";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useBoardStore, List, Card } from "@/store/board";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import { ArrowLeft, Plus, X, Loader2, Calendar, Sun, Moon } from "lucide-react";
+import { ArrowLeft, Plus, X, Loader2, Calendar, Sun, Moon, Search, SlidersHorizontal } from "lucide-react";
 import CardModal from "@/components/CardModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import CommandPalette from "@/components/CommandPalette";
 import { useTheme } from "@/hooks/useTheme";
 
 /* ---- Card Item ---- */
-function CardItem({ card, index, onClick, onDelete }: { card: Card; index: number; onClick: () => void; onDelete: () => void }) {
+const CardItem = memo(function CardItem({ card, index, onClick, onDelete, isDragDisabled }: { card: Card; index: number; onClick: (card: Card) => void; onDelete: (cardId: string) => void; isDragDisabled?: boolean }) {
     const pColors: Record<string, string> = { URGENT: "#ef4444", HIGH: "#f59e0b", MEDIUM: "#6366f1", LOW: "#10b981" };
+    const overdue = !!card.dueDate && new Date(card.dueDate).getTime() < Date.now();
     return (
-        <Draggable draggableId={card.id} index={index}>
+        <Draggable draggableId={card.id} index={index} isDragDisabled={isDragDisabled}>
             {(provided, snapshot) => (
-                <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} onClick={onClick}
+                <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} onClick={() => onClick(card)} className="card-item"
                     style={{
                         position: "relative",
                         borderRadius: "var(--radius)", padding: "14px 14px 12px 18px", marginBottom: 10, cursor: "pointer",
@@ -67,11 +70,10 @@ function CardItem({ card, index, onClick, onDelete }: { card: Card; index: numbe
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                         <p style={{ fontSize: 13, fontWeight: 650, lineHeight: 1.45, color: "var(--text-primary)", flex: 1, margin: 0 }}>{card.title}</p>
                         <button
-                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                            onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
                             style={{
                                 background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)",
-                                padding: 2, display: "flex", alignItems: "center", justifyContent: "center",
-                                opacity: 0, transition: "opacity 150ms"
+                                padding: 2, display: "flex", alignItems: "center", justifyContent: "center"
                             }}
                             className="card-delete-btn"
                             title="Delete card"
@@ -91,32 +93,23 @@ function CardItem({ card, index, onClick, onDelete }: { card: Card; index: numbe
                                 </span>
                             )}
                             {card.dueDate && (
-                                <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-secondary)", fontWeight: 500 }}>
-                                    <Calendar size={11} style={{ color: "var(--text-muted)" }} />
+                                <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: overdue ? "var(--danger)" : "var(--text-secondary)", fontWeight: overdue ? 800 : 500 }}>
+                                    <Calendar size={11} style={{ color: overdue ? "var(--danger)" : "var(--text-muted)" }} />
+                                    {overdue && "⚠ "}
                                     {new Date(card.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </span>
                             )}
                         </div>
                     )}
-
-                    <style>{`
-                        div:hover .card-delete-btn {
-                            opacity: 0.6 !important;
-                        }
-                        div:hover .card-delete-btn:hover {
-                            opacity: 1 !important;
-                            color: var(--danger) !important;
-                        }
-                    `}</style>
                 </div>
             )}
         </Draggable>
     );
-}
+});
 
 /* ---- List Column ---- */
-function ListColumn({ list, workspaceId, boardId, onCardClick, onRefresh, onDeleteCard }: {
-    list: List; workspaceId: string; boardId: string; onCardClick: (card: Card) => void; onRefresh: () => void; onDeleteCard: (cardId: string) => void;
+const ListColumn = memo(function ListColumn({ list, workspaceId, boardId, onCardClick, onRefresh, onDeleteCard, isDragDisabled }: {
+    list: List; workspaceId: string; boardId: string; onCardClick: (card: Card) => void; onRefresh: () => void; onDeleteCard: (cardId: string) => void; isDragDisabled?: boolean;
 }) {
     const [showAdd, setShowAdd] = useState(false);
     const [title, setTitle] = useState("");
@@ -231,7 +224,7 @@ function ListColumn({ list, workspaceId, boardId, onCardClick, onRefresh, onDele
                             transition: "background 200ms var(--ease)"
                         }}>
                         {list.cards.map((card, index) => (
-                            <CardItem key={card.id} card={card} index={index} onClick={() => onCardClick(card)} onDelete={() => onDeleteCard(card.id)} />
+                            <CardItem key={card.id} card={card} index={index} onClick={onCardClick} onDelete={onDeleteCard} isDragDisabled={isDragDisabled} />
                         ))}
                         {provided.placeholder}
                     </div>
@@ -264,7 +257,7 @@ function ListColumn({ list, workspaceId, boardId, onCardClick, onRefresh, onDele
             </div>
         </div>
     );
-}
+});
 
 /* ---- Board Page ---- */
 export default function BoardPage() {
@@ -283,13 +276,58 @@ export default function BoardPage() {
     const [boardName, setBoardName] = useState("");
     const [showDeleteBoardModal, setShowDeleteBoardModal] = useState(false);
 
+    // Board filters
+    const [filterText, setFilterText] = useState("");
+    const [filterPriority, setFilterPriority] = useState("");
+    const [filterLabelId, setFilterLabelId] = useState("");
+    const [dueSoonOnly, setDueSoonOnly] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
+    const [boardLabels, setBoardLabels] = useState<{ id: string; name: string; color: string }[]>([]);
+
     useEffect(() => { loadUser(); }, []);
     useEffect(() => {
         if (!authLoading && !token) { router.replace("/login"); return; }
         if (token && wId && bId) fetchBoard(wId, bId).catch(() => toast.error("Board not found"));
     }, [token, authLoading, wId, bId]);
+    useEffect(() => {
+        api.get(`/workspaces/${wId}/boards/${bId}/labels`).then(r => setBoardLabels(r.data)).catch(() => { });
+    }, [wId, bId]);
 
-    const refresh = () => fetchBoard(wId, bId);
+    const filtersActive = !!(filterText.trim() || filterPriority || filterLabelId || dueSoonOnly);
+    const totalCards = currentBoard?.lists.reduce((n, l) => n + l.cards.length, 0) ?? 0;
+
+    const visibleCardCount = useMemo(() => {
+        if (!currentBoard) return 0;
+        if (!filtersActive) return totalCards;
+        return filteredLists(currentBoard.lists).reduce((n, l) => n + l.cards.length, 0);
+    }, [currentBoard, filtersActive, totalCards, filterText, filterPriority, filterLabelId, dueSoonOnly]);
+
+    function filteredLists(lists: List[]): List[] {
+        if (!filtersActive) return lists;
+        const now = Date.now();
+        const weekMs = 7 * 24 * 3600 * 1000;
+        const q = filterText.trim().toLowerCase();
+        return lists.map(list => ({
+            ...list,
+            cards: list.cards.filter(c => {
+                if (q && !(c.title.toLowerCase().includes(q) || (c.description || "").toLowerCase().includes(q))) return false;
+                if (filterPriority && c.priority !== filterPriority) return false;
+                if (filterLabelId && !(c.labels || []).some(l => l.labelId === filterLabelId)) return false;
+                if (dueSoonOnly) {
+                    if (!c.dueDate) return false;
+                    const t = new Date(c.dueDate).getTime();
+                    if (!(t < now || t - now < weekMs)) return false; // overdue or due within 7 days
+                }
+                return true;
+            }),
+        }));
+    }
+
+    const clearFilters = () => { setFilterText(""); setFilterPriority(""); setFilterLabelId(""); setDueSoonOnly(false); };
+
+    const refresh = useCallback(() => fetchBoard(wId, bId).catch(() => {}), [wId, bId, fetchBoard]);
+
+    const handleCardClick = useCallback((card: Card) => setSelectedCard(card), []);
 
     const onDragEnd = useCallback(async (result: DropResult) => {
         if (!result.destination || !currentBoard) return;
@@ -343,7 +381,7 @@ export default function BoardPage() {
         }
     };
 
-    const handleDeleteCard = async (cardId: string) => {
+    const handleDeleteCard = useCallback(async (cardId: string) => {
         if (!confirm("Are you sure you want to delete this card?")) return;
         try {
             await api.delete(`/workspaces/${wId}/boards/${bId}/cards/${cardId}`);
@@ -352,7 +390,7 @@ export default function BoardPage() {
         } catch {
             toast.error("Failed to delete card");
         }
-    };
+    }, [wId, bId, refresh]);
 
     if (authLoading || isLoading || !currentBoard) {
         return (
@@ -368,7 +406,7 @@ export default function BoardPage() {
             <header style={{ 
                 display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", flexShrink: 0, 
                 background: "var(--bg-surface)", borderBottom: "1px solid var(--border)",
-                backdropFilter: "blur(20px) saturate(140%)", flexWrap: "wrap"
+                flexWrap: "wrap"
             }}>
                 <button onClick={() => router.push("/dashboard")}
                         style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", transition: "all 150ms var(--ease)" }}
@@ -417,13 +455,49 @@ export default function BoardPage() {
                 </div>
             </header>
 
+            {/* Filter Bar */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 24px", flexShrink: 0, flexWrap: "wrap" }}>
+                <button onClick={() => setShowFilters(s => !s)} className={showFilters || filtersActive ? "btn-secondary" : "btn-ghost"}
+                    style={{ fontSize: 11.5, padding: "6px 12px" }} title="Filter cards">
+                    <SlidersHorizontal size={12} /> Filters {filtersActive && "•"}
+                </button>
+                {showFilters && (
+                    <>
+                        <div style={{ position: "relative", width: 200 }}>
+                            <Search size={12} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }} />
+                            <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Search cards…"
+                                style={{ fontSize: 11.5, padding: "6px 10px 6px 28px", width: "100%" }} />
+                        </div>
+                        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ fontSize: 11.5, padding: "6px 30px 6px 10px", width: "auto" }}>
+                            <option value="">Any priority</option>
+                            {["LOW", "MEDIUM", "HIGH", "URGENT"].map(p => <option key={p} value={p}>{p.toLowerCase()}</option>)}
+                        </select>
+                        <select value={filterLabelId} onChange={e => setFilterLabelId(e.target.value)} style={{ fontSize: 11.5, padding: "6px 30px 6px 10px", width: "auto" }}>
+                            <option value="">Any label</option>
+                            {boardLabels.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                        <button onClick={() => setDueSoonOnly(v => !v)}
+                            className={dueSoonOnly ? "btn-secondary" : "btn-ghost"}
+                            style={{ fontSize: 11.5, padding: "6px 12px", ...(dueSoonOnly ? { borderColor: "var(--warning)", color: "var(--warning)" } : {}) }}>
+                            Due soon
+                        </button>
+                    </>
+                )}
+                {filtersActive && (
+                    <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600 }}>
+                        {visibleCardCount} of {totalCards} cards
+                        <button onClick={clearFilters} className="btn-ghost" style={{ fontSize: 10.5, padding: "2px 8px", marginLeft: 10 }}>Clear</button>
+                    </span>
+                )}
+            </div>
+
             {/* Board Grid view */}
             <DragDropContext onDragEnd={onDragEnd}>
                 <Droppable droppableId="board" type="LIST" direction="horizontal">
                     {(provided) => (
                         <div ref={provided.innerRef} {...provided.droppableProps} className="kanban-board-scroll"
                             style={{ flex: 1, display: "flex", gap: 20, padding: 24, overflowX: "auto", alignItems: "flex-start" }}>
-                            {currentBoard.lists.map((list, index) => (
+                            {filteredLists(currentBoard.lists).map((list, index) => (
                                 <Draggable key={list.id} draggableId={list.id} index={index}>
                                     {(providedDrag) => (
                                         <div ref={providedDrag.innerRef} {...providedDrag.draggableProps} {...providedDrag.dragHandleProps} className="kanban-list-column">
@@ -431,9 +505,10 @@ export default function BoardPage() {
                                                 list={list}
                                                 workspaceId={wId}
                                                 boardId={bId}
-                                                onCardClick={setSelectedCard}
+                                                onCardClick={handleCardClick}
                                                 onRefresh={refresh}
                                                 onDeleteCard={handleDeleteCard}
+                                                isDragDisabled={filtersActive}
                                             />
                                         </div>
                                     )}
@@ -489,7 +564,11 @@ export default function BoardPage() {
                 </div>
             )}
 
-            {selectedCard && <CardModal card={selectedCard} workspaceId={wId} boardId={bId} onClose={() => setSelectedCard(null)} onRefresh={refresh} />}
+            <AnimatePresence>
+                {selectedCard && <CardModal card={selectedCard} workspaceId={wId} boardId={bId} onClose={() => setSelectedCard(null)} onRefresh={refresh} />}
+            </AnimatePresence>
+
+            <CommandPalette />
         </div>
     );
 }

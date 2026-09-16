@@ -60,7 +60,7 @@ export default function RegisterPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <div style={{
                             width: 38, height: 38, borderRadius: 10,
-                            background: "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)",
+                            background: "var(--accent)",
                             display: "flex", alignItems: "center", justifyContent: "center",
                             boxShadow: "0 4px 12px rgba(95, 98, 241, 0.25)"
                         }}>

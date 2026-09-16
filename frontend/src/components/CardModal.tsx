@@ -1,10 +1,17 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
+import dynamic from "next/dynamic";
+import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye } from "lucide-react";
 import { Card } from "@/store/board";
-import Three3DViewer from "@/components/Three3DViewer";
+
+// three.js is heavy — load it only when a 3D section actually renders
+const Three3DViewer = dynamic(() => import("@/components/Three3DViewer"), {
+    ssr: false,
+    loading: () => <div style={{ padding: 12, fontSize: 12, color: "var(--text-muted)" }}>Loading 3D viewer…</div>,
+});
 const LABEL_PRESETS = ["#5f62f1", "#ef4444", "#10b981", "#f59e0b", "#a78bfa", "#f472b6", "#22d3ee", "#84cc16", "#fb923c", "#818cf8"];
 const SHOW_3D_VIEWER = true; // Set to true to activate 3D Model Viewer feature
 
@@ -578,10 +585,21 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     return (
         <div className="overlay">
             {/* Backdrop closes drawer */}
-            <div className="overlay-backdrop" onClick={handleClose} />
+            <motion.div 
+                className="overlay-backdrop" 
+                onClick={handleClose} 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+            />
 
             {/* Modal Sheet Container */}
-            <div className={`drawer-sheet ${isDraggingOver ? 'dragging-over' : ''}`}
+            <motion.div className={`drawer-sheet ${isDraggingOver ? 'dragging-over' : ''}`}
+                 initial={{ x: "100%" }}
+                 animate={{ x: 0 }}
+                 exit={{ x: "100%" }}
+                 transition={{ type: "spring", bounce: 0, duration: 0.4 }}
                  onPaste={handlePaste}
                  onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
                  onDragLeave={() => setIsDraggingOver(false)}
@@ -935,7 +953,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                     </div>
                     {renderRightPanel("desktop-only")}
                 </div>
-            </div>
+            </motion.div>
 
             {/* Media Preview Lightbox Popup */}
             {lightboxMedia && (

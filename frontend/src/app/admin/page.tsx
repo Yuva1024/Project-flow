@@ -125,7 +125,7 @@ export default function AdminPage() {
             <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "16px 32px", borderBottom: "1px solid var(--border)",
-                background: "var(--bg-surface)", backdropFilter: "blur(20px)",
+                background: "var(--bg-surface)",
                 position: "sticky", top: 0, zIndex: 50
             }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -135,9 +135,8 @@ export default function AdminPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{
                             width: 34, height: 34, borderRadius: 10,
-                            background: "linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            boxShadow: "0 4px 12px rgba(239, 68, 68, 0.25)"
+                            background: "var(--danger)",
+                            display: "flex", alignItems: "center", justifyContent: "center"
                         }}>
                             <Shield size={16} style={{ color: "white" }} />
                         </div>
@@ -282,8 +281,8 @@ export default function AdminPage() {
                                                 <div style={{
                                                     width: 28, height: 28, borderRadius: "50%",
                                                     background: u.isAdmin
-                                                        ? "linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)"
-                                                        : "linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%)",
+                                                        ? "var(--danger)"
+                                                        : "var(--accent)",
                                                     display: "flex", alignItems: "center", justifyContent: "center",
                                                     fontSize: 11, fontWeight: 800, color: "white", flexShrink: 0
                                                 }}>

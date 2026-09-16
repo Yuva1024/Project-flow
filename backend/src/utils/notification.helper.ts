@@ -14,3 +14,12 @@ export const createNotification = async (userId: string, type: string, reference
         console.error('Failed to create notification:', error);
     }
 };
+
+export const createNotifications = async (items: { userId: string; type: string; referenceId: string; message: string }[]) => {
+    if (items.length === 0) return;
+    try {
+        await prisma.notification.createMany({ data: items });
+    } catch (error) {
+        console.error('Failed to create notifications:', error);
+    }
+};

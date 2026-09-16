@@ -12,7 +12,7 @@ const createWorkspaceSchema = z.object({
 });
 
 const inviteMemberSchema = z.object({
-    email: z.string().email(),
+    email: z.string().email().toLowerCase(),
     role: z.enum(['ADMIN', 'MEMBER']).optional().default('MEMBER'),
 });
 
@@ -293,20 +293,86 @@ export const updateWorkspace = async (req: AuthRequest, res: Response) => {
     }
 };
 
+/**
+ * GET /api/workspaces/:id/assets
+ * Lists every attachment in the workspace with enough context to locate its card.
+ */
+export const getWorkspaceAssets = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.userId;
+        const id = req.params.id as string;
+
+        const membership = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId: id, userId } },
+        });
+        if (!membership) {
+            return res.status(403).json({ message: 'Not a member of this workspace' });
+        }
+
+        const assets = await prisma.attachment.findMany({
+            where: { card: { list: { board: { workspaceId: id } } } },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                card: {
+                    select: {
+                        id: true,
+                        title: true,
+                        list: {
+                            select: {
+                                id: true,
+                                title: true,
+                                board: { select: { id: true, title: true } },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        res.json(assets.map(a => ({
+            id: a.id,
+            fileName: a.fileName,
+            fileUrl: a.fileUrl,
+            fileSize: a.fileSize,
+            mimeType: a.mimeType,
+            createdAt: a.createdAt,
+            card: {
+                id: a.card.id,
+                title: a.card.title,
+                listTitle: a.card.list.title,
+                boardId: a.card.list.board.id,
+                boardTitle: a.card.list.board.title,
+            },
+        })));
+    } catch (error) {
+        console.error('Get workspace assets error:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
 export const deleteWorkspace = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;
         const id = req.params.id as string;
 
-        const workspace = await prisma.workspace.findUnique({ 
+        // Authorize before doing any expensive work (deep fetch + storage deletion)
+        const existing = await prisma.workspace.findUnique({ where: { id }, select: { ownerId: true } });
+        if (!existing) {
+            return res.status(404).json({ message: 'Workspace not found' });
+        }
+        if (existing.ownerId !== userId) {
+            return res.status(403).json({ message: 'Only the workspace owner can delete it' });
+        }
+
+        const workspace = await prisma.workspace.findUnique({
             where: { id },
-            include: {
+            select: {
                 boards: {
-                    include: {
+                    select: {
                         lists: {
-                            include: {
+                            select: {
                                 cards: {
-                                    include: { attachments: true }
+                                    select: { attachments: { select: { fileUrl: true } } }
                                 }
                             }
                         }
@@ -314,22 +380,15 @@ export const deleteWorkspace = async (req: AuthRequest, res: Response) => {
                 }
             }
         });
-        if (!workspace) {
-            return res.status(404).json({ message: 'Workspace not found' });
-        }
 
         // Delete all attachments from Cloudflare R2
-        const fileUrls = workspace.boards.flatMap(board =>
+        const fileUrls = (workspace?.boards ?? []).flatMap(board =>
             board.lists.flatMap(list =>
                 list.cards.flatMap(card => card.attachments.map(att => att.fileUrl))
             )
         );
         if (fileUrls.length > 0) {
             await deleteFiles(fileUrls);
-        }
-
-        if (workspace.ownerId !== userId) {
-            return res.status(403).json({ message: 'Only the workspace owner can delete it' });
         }
 
         await prisma.workspace.delete({

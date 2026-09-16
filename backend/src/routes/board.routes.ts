@@ -55,15 +55,27 @@ import {
 } from '../controllers/cardmember.controller';
 
 import multer from 'multer';
+import path from 'path';
 import {
     uploadAttachment,
     getAttachments,
     deleteAttachment,
 } from '../controllers/attachment.controller';
+import { uploadLimiter } from '../middleware/rateLimit.middleware';
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const BLOCKED_EXTENSIONS = ['.exe', '.msi', '.bat', '.cmd', '.sh', '.scr', '.com', '.ps1', '.vbs', '.jar'];
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    // Unlimited file size — no per-file limit restriction
+    limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+    fileFilter: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (BLOCKED_EXTENSIONS.includes(ext)) {
+            return cb(new Error('File type not allowed'));
+        }
+        cb(null, true);
+    },
 });
 
 const router = Router({ mergeParams: true });
@@ -131,7 +143,7 @@ router.delete('/:boardId/cards/:cardId/members/:memberId', removeCardMember);
 router.get('/:boardId/cards/:cardId/activity', getActivityLog);
 
 // Attachments
-router.post('/:boardId/cards/:cardId/attachments', upload.single('file'), uploadAttachment);
+router.post('/:boardId/cards/:cardId/attachments', uploadLimiter, upload.single('file'), uploadAttachment);
 router.get('/:boardId/cards/:cardId/attachments', getAttachments);
 router.delete('/:boardId/cards/:cardId/attachments/:attachmentId', deleteAttachment);
 

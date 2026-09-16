@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
-import { createNotification } from '../utils/notification.helper';
+import { createNotifications } from '../utils/notification.helper';
 
 // --- Validation Schemas ---
 const createCommentSchema = z.object({
@@ -61,12 +61,16 @@ export const createComment = async (req: AuthRequest, res: Response) => {
 
         await logActivity(cardId, userId, 'added comment', comment.content.substring(0, 100));
 
-        const cardMembers = await prisma.cardMember.findMany({ where: { cardId } });
-        for (const cm of cardMembers) {
-            if (cm.userId !== userId) {
-                await createNotification(cm.userId, 'new_comment', cardId, `New comment on card "${card.title}": "${comment.content.substring(0, 50)}..."`);
-            }
-        }
+        const cardMembers = await prisma.cardMember.findMany({
+            where: { cardId, userId: { not: userId } },
+            select: { userId: true },
+        });
+        await createNotifications(cardMembers.map(cm => ({
+            userId: cm.userId,
+            type: 'new_comment',
+            referenceId: cardId,
+            message: `New comment on card "${card.title}": "${comment.content.substring(0, 50)}..."`,
+        })));
 
         res.status(201).json(comment);
     } catch (error) {

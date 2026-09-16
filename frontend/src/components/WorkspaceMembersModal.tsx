@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { X, UserPlus, Crown, Shield, Trash2, Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface Member { userId: string; role: string; user: { id: string; name: string; email: string; }; }
 interface Props { workspaceId: string; workspaceName: string; onClose: () => void; }
@@ -44,8 +45,23 @@ export default function WorkspaceMembersModal({ workspaceId, workspaceName, onCl
 
     return (
         <div className="overlay">
-            <div className="overlay-backdrop" onClick={onClose} />
-            <div className="overlay-content" style={{ width: "100%", maxWidth: 500, border: "1px solid var(--border-active)" }} onClick={(e) => e.stopPropagation()}>
+            <motion.div 
+                className="overlay-backdrop" 
+                onClick={onClose} 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+            />
+            <motion.div 
+                className="overlay-content" 
+                style={{ width: "100%", maxWidth: 500, border: "1px solid var(--border-active)" }} 
+                onClick={(e) => e.stopPropagation()}
+                initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 10 }}
+                transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+            >
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
                     <div>
@@ -107,7 +123,7 @@ export default function WorkspaceMembersModal({ workspaceId, workspaceName, onCl
                         </div>
                     )}
                 </div>
-            </div>
+            </motion.div>
         </div>
     );
 }

@@ -9,6 +9,7 @@ import {
     removeMember,
     updateWorkspace,
     deleteWorkspace,
+    getWorkspaceAssets,
 } from '../controllers/workspace.controller';
 
 const router = Router();
@@ -26,5 +27,8 @@ router.delete('/:id', deleteWorkspace);
 router.post('/:id/invite', inviteMember);
 router.patch('/:id/members/:memberId', updateMemberRole);
 router.delete('/:id/members/:memberId', removeMember);
+
+// Asset library — all attachments in the workspace
+router.get('/:id/assets', getWorkspaceAssets);
 
 export default router;

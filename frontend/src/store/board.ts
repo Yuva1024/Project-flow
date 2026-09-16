@@ -18,6 +18,14 @@ interface Board {
     _count?: { lists: number };
 }
 
+export interface Whiteboard {
+    id: string;
+    name: string;
+    workspaceId: string;
+    elements: any;
+    updatedAt: string;
+}
+
 export interface Card {
     id: string;
     listId: string;
@@ -45,6 +53,7 @@ interface BoardState {
     workspaces: Workspace[];
     currentWorkspace: Workspace | null;
     boards: Board[];
+    whiteboards: Whiteboard[];
     currentBoard: { id: string; title: string; lists: List[] } | null;
     isLoading: boolean;
 
@@ -53,11 +62,16 @@ interface BoardState {
     createWorkspace: (name: string) => Promise<void>;
     updateWorkspace: (id: string, name: string) => Promise<void>;
     deleteWorkspace: (id: string) => Promise<void>;
+    
     fetchBoards: (workspaceId: string) => Promise<void>;
     createBoard: (workspaceId: string, title: string) => Promise<void>;
     updateBoard: (workspaceId: string, boardId: string, data: { title?: string; visibility?: string }) => Promise<void>;
     deleteBoard: (workspaceId: string, boardId: string) => Promise<void>;
     fetchBoard: (workspaceId: string, boardId: string) => Promise<void>;
+    
+    fetchWhiteboards: (workspaceId: string) => Promise<void>;
+    createWhiteboard: (workspaceId: string, name: string) => Promise<void>;
+    deleteWhiteboard: (workspaceId: string, wbId: string) => Promise<void>;
     updateList: (workspaceId: string, boardId: string, listId: string, title: string) => Promise<void>;
     deleteList: (workspaceId: string, boardId: string, listId: string) => Promise<void>;
     reorderLists: (workspaceId: string, boardId: string, orderedListIds: string[]) => Promise<void>;
@@ -130,10 +144,32 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         }
     },
 
+    fetchWhiteboards: async (workspaceId) => {
+        const { data } = await api.get(`/workspaces/${workspaceId}/whiteboards`);
+        set({ whiteboards: data });
+    },
+
+    createWhiteboard: async (workspaceId, name) => {
+        await api.post(`/workspaces/${workspaceId}/whiteboards`, { name });
+        await get().fetchWhiteboards(workspaceId);
+    },
+
+    deleteWhiteboard: async (workspaceId, wbId) => {
+        await api.delete(`/workspaces/${workspaceId}/whiteboards/${wbId}`);
+        await get().fetchWhiteboards(workspaceId);
+    },
+
     fetchBoard: async (workspaceId, boardId) => {
-        set({ isLoading: true });
-        const { data } = await api.get(`/workspaces/${workspaceId}/boards/${boardId}`);
-        set({ currentBoard: data, isLoading: false });
+        // Only show the full-screen loader for an initial load or a board switch;
+        // background refreshes (e.g. after closing a card modal) stay silent.
+        const isNewBoard = get().currentBoard?.id !== boardId;
+        if (isNewBoard) set({ isLoading: true });
+        try {
+            const { data } = await api.get(`/workspaces/${workspaceId}/boards/${boardId}`);
+            set({ currentBoard: data });
+        } finally {
+            if (isNewBoard) set({ isLoading: false });
+        }
     },
 
     updateList: async (workspaceId, boardId, listId, title) => {
@@ -173,7 +209,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
         const board = get().currentBoard;
         if (!board) return;
 
-        const oldLists = JSON.parse(JSON.stringify(board.lists)) as List[];
+        const oldLists = structuredClone(board.lists);
 
         // 1. Find the card and its source list
         let cardToMove: Card | null = null;

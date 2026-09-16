@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isAllowedFileUrl } from '@/lib/fileGuard';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -8,16 +9,20 @@ export async function GET(request: Request) {
         return new NextResponse('Missing URL parameter', { status: 400 });
     }
 
+    if (!isAllowedFileUrl(fileUrl)) {
+        return new NextResponse('URL not allowed', { status: 403 });
+    }
+
     try {
         const response = await fetch(fileUrl);
-        
+
         if (!response.ok) {
-            return new NextResponse(`Failed to fetch model from storage: ${response.statusText}`, { status: response.status });
+            return new NextResponse('Failed to fetch model from storage', { status: response.status });
         }
 
         const data = await response.arrayBuffer();
         const contentType = response.headers.get('content-type') || 'model/gltf-binary';
-        
+
         return new NextResponse(data, {
             headers: {
                 'Access-Control-Allow-Origin': '*',
@@ -26,10 +31,11 @@ export async function GET(request: Request) {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0',
+                'X-Content-Type-Options': 'nosniff',
             },
         });
-    } catch (error: any) {
+    } catch (error) {
         console.error('Proxy 3D error:', error);
-        return new NextResponse(`Failed to proxy 3D model: ${error?.message || error}`, { status: 500 });
+        return new NextResponse('Failed to proxy 3D model', { status: 500 });
     }
 }

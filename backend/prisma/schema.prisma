@@ -25,17 +25,22 @@ model User {
   cardMembers      CardMember[]
   activityLogs     ActivityLog[]
   notifications    Notification[]
+  assets           Asset[]
 }
 
 model Workspace {
-  id        String            @id @default(uuid())
-  name      String
-  ownerId   String
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  owner     User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members   WorkspaceMember[]
-  boards    Board[]
+  id           String            @id @default(uuid())
+  name         String
+  ownerId      String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  owner        User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members      WorkspaceMember[]
+  boards       Board[]
+  whiteboards  Whiteboard[]
+  assetFolders AssetFolder[]
+  assets       Asset[]
+  assetTags    AssetTag[]
 }
 
 enum Role {
@@ -102,6 +107,7 @@ model Card {
   checklists       Checklist[]
   attachments      Attachment[]
   activities       ActivityLog[]
+  linkedAssets     CardAsset[]
 }
 
 model Comment {
@@ -189,4 +195,75 @@ model Notification {
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Whiteboard {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  elements    Json      @default("[]")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AssetFolder {
+  id          String        @id @default(uuid())
+  workspaceId String
+  name        String
+  parentId    String?
+  createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent      AssetFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    AssetFolder[] @relation("FolderTree")
+  assets      Asset[]
+}
+
+model Asset {
+  id           String               @id @default(uuid())
+  workspaceId  String
+  folderId     String?
+  fileName     String
+  fileUrl      String
+  fileSize     Int
+  mimeType     String
+  uploadedById String
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder       AssetFolder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  tags         AssetTagAssignment[]
+  cardLinks    CardAsset[]
+}
+
+model AssetTag {
+  id          String               @id @default(uuid())
+  workspaceId String
+  name        String
+  color       String               @default("#6366f1")
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignments AssetTagAssignment[]
+
+  @@unique([workspaceId, name])
+}
+
+model AssetTagAssignment {
+  id      String   @id @default(uuid())
+  assetId String
+  tagId   String
+  asset   Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  tag     AssetTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, tagId])
+}
+
+model CardAsset {
+  id      String @id @default(uuid())
+  cardId  String
+  assetId String
+  card    Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, assetId])
 }
