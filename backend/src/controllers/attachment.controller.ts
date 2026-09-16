@@ -10,18 +10,7 @@ async function assertCardAccess(workspaceId: string, cardId: string, userId: str
         where: { workspaceId_userId: { workspaceId, userId } },
     });
     if (!membership) return null;
-import { Request, Response } from 'express';
-import { prisma } from '../utils/prisma';
-import { uploadFile, deleteFile } from '../utils/s3';
-import { AuthRequest } from '../middleware/auth.middleware';
-import { logActivity } from '../utils/activity.helper';
 
-// Verify requester is a workspace member and the card belongs to that workspace
-async function assertCardAccess(workspaceId: string, cardId: string, userId: string) {
-    const membership = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId } },
-    });
-    if (!membership) return null;
 
     return prisma.card.findFirst({
         where: { id: cardId, list: { board: { workspaceId } } },
