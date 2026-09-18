@@ -326,12 +326,51 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                     className="glass-panel-interactive"
                                     style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
                                 >
-                                    <div style={{ height: 120, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                        {getMimeCategory(asset.mimeType, asset.fileName) === 'image' ? (
-                                            <img src={asset.fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                        ) : (
-                                            renderIcon(asset.mimeType, asset.fileName)
-                                        )}
+                                    <div style={{ height: 135, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+                                        {(() => {
+                                            const cat = getMimeCategory(asset.mimeType, asset.fileName);
+                                            const isGlb = asset.fileName.toLowerCase().endsWith('.glb') || asset.fileName.toLowerCase().endsWith('.gltf');
+                                            if (cat === 'image') {
+                                                return <img src={asset.fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                                            }
+                                            if (isGlb) {
+                                                const ModelViewer = 'model-viewer' as any;
+                                                return (
+                                                    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                                                        <ModelViewer
+                                                            src={asset.fileUrl}
+                                                            loading="lazy"
+                                                            reveal="auto"
+                                                            interaction-prompt="none"
+                                                            auto-rotate
+                                                            auto-rotate-delay="0"
+                                                            rotation-per-second="18deg"
+                                                            shadow-intensity="1"
+                                                            camera-orbit="45deg 55deg auto"
+                                                            style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+                                                        />
+                                                        <span style={{
+                                                            position: 'absolute',
+                                                            top: 8,
+                                                            right: 8,
+                                                            padding: '2px 6px',
+                                                            fontSize: 9,
+                                                            fontWeight: 800,
+                                                            borderRadius: 4,
+                                                            background: 'rgba(99, 102, 241, 0.2)',
+                                                            color: 'var(--accent)',
+                                                            backdropFilter: 'blur(8px)',
+                                                            border: '1px solid rgba(99, 102, 241, 0.35)',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.05em'
+                                                        }}>
+                                                            3D
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }
+                                            return renderIcon(asset.mimeType, asset.fileName);
+                                        })()}
                                     </div>
                                     <div style={{ padding: 12, flex: 1 }}>
                                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={asset.fileName}>
@@ -366,7 +405,33 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                     {assets.map(asset => (
                                         <tr key={asset.id} onClick={() => onSelectAsset(asset.id)} style={{ borderBottom: '1px solid var(--border-hover)', cursor: 'pointer' }}>
                                             <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                {renderIcon(asset.mimeType, asset.fileName)}
+                                                {(() => {
+                                                    const cat = getMimeCategory(asset.mimeType, asset.fileName);
+                                                    const isGlb = asset.fileName.toLowerCase().endsWith('.glb') || asset.fileName.toLowerCase().endsWith('.gltf');
+                                                    if (cat === 'image') {
+                                                        return (
+                                                            <div style={{ width: 36, height: 36, borderRadius: 6, overflow: 'hidden', background: 'var(--bg-base)', flexShrink: 0 }}>
+                                                                <img src={asset.fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (isGlb) {
+                                                        const ModelViewer = 'model-viewer' as any;
+                                                        return (
+                                                            <div style={{ width: 36, height: 36, borderRadius: 6, overflow: 'hidden', background: 'var(--bg-base)', flexShrink: 0, position: 'relative' }}>
+                                                                <ModelViewer
+                                                                    src={asset.fileUrl}
+                                                                    loading="lazy"
+                                                                    reveal="auto"
+                                                                    interaction-prompt="none"
+                                                                    auto-rotate
+                                                                    style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+                                                                />
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return renderIcon(asset.mimeType, asset.fileName);
+                                                })()}
                                                 <span style={{ fontSize: 13, fontWeight: 600 }}>{asset.fileName}</span>
                                             </td>
                                             <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{formatFileSize(asset.fileSize)}</td>

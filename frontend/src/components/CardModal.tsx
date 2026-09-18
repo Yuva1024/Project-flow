@@ -772,6 +772,26 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                         <video controls src={att.fileUrl} style={{ width: "100%", maxHeight: 280 }} />
                                                     </div>
                                                 )}
+                                                {is3D && (
+                                                    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", height: 180, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                                                        {(() => {
+                                                            const ModelViewer = 'model-viewer' as any;
+                                                            return (
+                                                                <ModelViewer
+                                                                    src={att.fileUrl}
+                                                                    loading="lazy"
+                                                                    reveal="auto"
+                                                                    camera-controls
+                                                                    auto-rotate
+                                                                    auto-rotate-delay="0"
+                                                                    rotation-per-second="18deg"
+                                                                    shadow-intensity="1"
+                                                                    style={{ width: "100%", height: "100%" }}
+                                                                />
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                )}
 
                                                 {/* File Details & Download Row */}
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
