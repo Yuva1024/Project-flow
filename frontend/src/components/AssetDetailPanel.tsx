@@ -41,9 +41,11 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                     api.get(`/workspaces/${workspaceId}/assets/${assetId}`),
                     api.get(`/workspaces/${workspaceId}/assets/tags`)
                 ]);
+                console.log('[AssetDetail] asset response:', assetRes.data);
                 setAsset(assetRes.data);
-                setTags(tagsRes.data);
-            } catch (error) {
+                setTags(tagsRes.data || []);
+            } catch (error: any) {
+                console.error("[AssetDetail] Failed to load:", error?.response?.status, error?.response?.data, error?.message);
                 toast.error("Failed to load asset details");
                 onClose();
             } finally {
@@ -51,8 +53,9 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
             }
         };
         fetchDetails();
-        import('@google/model-viewer');
-    }, [assetId, workspaceId, onClose]);
+        import('@google/model-viewer').catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [assetId, workspaceId]);
 
     const handleUpdateName = async (newName: string) => {
         if (!newName.trim() || newName === asset.fileName) return;
