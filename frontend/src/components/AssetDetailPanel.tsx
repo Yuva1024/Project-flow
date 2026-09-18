@@ -19,11 +19,19 @@ function formatFileSize(bytes: number): string {
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
-function getMimeCategory(mime: string): string {
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('audio/')) return 'audio';
-    if (mime.includes('gltf') || mime.includes('glb') || mime.includes('fbx') || mime.includes('obj')) return '3d';
+function getMimeCategory(mime?: string, fileName?: string): string {
+    const fn = (fileName || '').toLowerCase();
+    if (fn.endsWith('.glb') || fn.endsWith('.gltf') || fn.endsWith('.obj') || fn.endsWith('.fbx')) return '3d';
+    if (fn.endsWith('.png') || fn.endsWith('.jpg') || fn.endsWith('.jpeg') || fn.endsWith('.webp') || fn.endsWith('.gif') || fn.endsWith('.svg')) return 'image';
+    if (fn.endsWith('.mp4') || fn.endsWith('.webm') || fn.endsWith('.mov')) return 'video';
+    if (fn.endsWith('.mp3') || fn.endsWith('.wav') || fn.endsWith('.ogg')) return 'audio';
+
+    if (mime) {
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime.startsWith('audio/')) return 'audio';
+        if (mime.includes('gltf') || mime.includes('glb') || mime.includes('fbx') || mime.includes('obj')) return '3d';
+    }
     return 'other';
 }
 
@@ -114,21 +122,22 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
         );
     }
 
-    const category = getMimeCategory(asset.mimeType);
+    const category = getMimeCategory(asset.mimeType, asset.fileName);
+    const fileUrl = asset.fileUrl || asset.url || '';
 
     const renderPreview = () => {
         if (category === 'image') {
-            return <img src={asset.url} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
+            return <img src={fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
         }
         if (category === '3d') {
             const ModelViewer = 'model-viewer' as any;
-            return <ModelViewer src={asset.url} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
+            return <ModelViewer src={fileUrl} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
         }
         if (category === 'audio') {
-            return <audio controls src={asset.url} style={{ width: '100%', marginTop: 'auto', marginBottom: 'auto' }} />;
+            return <audio controls src={fileUrl} style={{ width: '100%', marginTop: 'auto', marginBottom: 'auto' }} />;
         }
         if (category === 'video') {
-            return <video controls src={asset.url} style={{ width: '100%', height: '100%' }} />;
+            return <video controls src={fileUrl} style={{ width: '100%', height: '100%' }} />;
         }
         return <File size={64} color="var(--text-muted)" />;
     };
@@ -187,20 +196,20 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                                 </button>
                                 {showTagDropdown && (
                                     <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 8, width: 160, zIndex: 10, boxShadow: 'var(--shadow)' }}>
-                                        {tags.filter(t => !asset.tags.some((at: any) => at.tag.id === t.id)).map(t => (
-                                            <div key={t.id} onClick={() => handleAddTag(t.id)} style={{ padding: '6px 8px', fontSize: 12, cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
-                                                {t.name}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                        {tags.filter(t => !(asset.tags || []).some((at: any) => at.tag?.id === t.id)).map(t => (
+                                             <div key={t.id} onClick={() => handleAddTag(t.id)} style={{ padding: '6px 8px', fontSize: 12, cursor: 'pointer', borderRadius: 'var(--radius-sm)' }}>
+                                                 {t.name}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
                             </div>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            {asset.tags.map((t: any) => (
-                                <span key={t.tag.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: t.tag.color || 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 600 }}>
-                                    {t.tag.name}
-                                    <X size={12} style={{ cursor: 'pointer' }} onClick={() => handleRemoveTag(t.tag.id)} />
+                            {(asset.tags || []).map((t: any) => (
+                                <span key={t.tag?.id || t.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, background: t.tag?.color || t.color || 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 600 }}>
+                                    {t.tag?.name || t.name}
+                                    <X size={12} style={{ cursor: 'pointer' }} onClick={() => handleRemoveTag(t.tag?.id || t.id)} />
                                 </span>
                             ))}
                         </div>
@@ -209,23 +218,26 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                     {/* Linked Cards */}
                     <div style={{ marginBottom: 24 }}>
                         <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, display: 'block' }}>Linked Cards</label>
-                        {asset.linkedCards && asset.linkedCards.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {asset.linkedCards.map((lc: any) => (
-                                    <div key={lc.card.id} style={{ padding: 12, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 13 }}>
-                                        {lc.card.title}
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Not linked to any cards.</div>
-                        )}
+                        {(() => {
+                            const cards = asset.cardLinks || asset.linkedCards || [];
+                            return cards.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {cards.map((lc: any) => (
+                                        <div key={lc.card?.id || lc.id} style={{ padding: 12, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontSize: 13 }}>
+                                            {lc.card?.title || 'Untitled Card'}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Not linked to any cards.</div>
+                            );
+                        })()}
                     </div>
                 </div>
 
                 {/* Actions */}
                 <div style={{ padding: 24, borderTop: '1px solid var(--border)', display: 'flex', gap: 12 }}>
-                    <a href={asset.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ flex: 1, textDecoration: 'none' }}>
+                    <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={asset.fileName} className="btn-secondary" style={{ flex: 1, textDecoration: 'none' }}>
                         <Download size={14} /> Download
                     </a>
                     <button onClick={handleDelete} className="btn-danger">

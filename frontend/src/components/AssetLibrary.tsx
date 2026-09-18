@@ -20,11 +20,19 @@ function formatFileSize(bytes: number): string {
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 }
 
-function getMimeCategory(mime: string): string {
-    if (mime.startsWith('image/')) return 'image';
-    if (mime.startsWith('video/')) return 'video';
-    if (mime.startsWith('audio/')) return 'audio';
-    if (mime.includes('gltf') || mime.includes('glb') || mime.includes('fbx') || mime.includes('obj')) return '3d';
+function getMimeCategory(mime?: string, fileName?: string): string {
+    const fn = (fileName || '').toLowerCase();
+    if (fn.endsWith('.glb') || fn.endsWith('.gltf') || fn.endsWith('.obj') || fn.endsWith('.fbx')) return '3d';
+    if (fn.endsWith('.png') || fn.endsWith('.jpg') || fn.endsWith('.jpeg') || fn.endsWith('.webp') || fn.endsWith('.gif') || fn.endsWith('.svg')) return 'image';
+    if (fn.endsWith('.mp4') || fn.endsWith('.webm') || fn.endsWith('.mov')) return 'video';
+    if (fn.endsWith('.mp3') || fn.endsWith('.wav') || fn.endsWith('.ogg')) return 'audio';
+
+    if (mime) {
+        if (mime.startsWith('image/')) return 'image';
+        if (mime.startsWith('video/')) return 'video';
+        if (mime.startsWith('audio/')) return 'audio';
+        if (mime.includes('gltf') || mime.includes('glb') || mime.includes('fbx') || mime.includes('obj')) return '3d';
+    }
     return 'other';
 }
 
@@ -159,12 +167,12 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
         }
     };
 
-    const renderIcon = (mime: string) => {
-        const cat = getMimeCategory(mime);
+    const renderIcon = (mime?: string, fileName?: string) => {
+        const cat = getMimeCategory(mime, fileName);
         if (cat === 'image') return <ImageIcon size={32} color="var(--text-muted)" />;
         if (cat === 'video') return <Video size={32} color="var(--text-muted)" />;
         if (cat === 'audio') return <Music size={32} color="var(--text-muted)" />;
-        if (cat === '3d') return <Box size={32} color="var(--text-muted)" />;
+        if (cat === '3d') return <Box size={32} color="var(--accent)" />;
         return <File size={32} color="var(--text-muted)" />;
     };
 
@@ -319,10 +327,10 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                     style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
                                 >
                                     <div style={{ height: 120, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                                        {getMimeCategory(asset.mimeType) === 'image' ? (
+                                        {getMimeCategory(asset.mimeType, asset.fileName) === 'image' ? (
                                             <img src={asset.fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         ) : (
-                                            renderIcon(asset.mimeType)
+                                            renderIcon(asset.mimeType, asset.fileName)
                                         )}
                                     </div>
                                     <div style={{ padding: 12, flex: 1 }}>
@@ -358,11 +366,11 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                     {assets.map(asset => (
                                         <tr key={asset.id} onClick={() => onSelectAsset(asset.id)} style={{ borderBottom: '1px solid var(--border-hover)', cursor: 'pointer' }}>
                                             <td style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                                                {renderIcon(asset.mimeType)}
+                                                {renderIcon(asset.mimeType, asset.fileName)}
                                                 <span style={{ fontSize: 13, fontWeight: 600 }}>{asset.fileName}</span>
                                             </td>
                                             <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{formatFileSize(asset.fileSize)}</td>
-                                            <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{getMimeCategory(asset.mimeType)}</td>
+                                            <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{getMimeCategory(asset.mimeType, asset.fileName)}</td>
                                             <td style={{ padding: '12px 16px', fontSize: 13, color: 'var(--text-secondary)' }}>{new Date(asset.createdAt).toLocaleDateString()}</td>
                                         </tr>
                                     ))}
