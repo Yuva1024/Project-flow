@@ -86,10 +86,10 @@ app.use('/api', apiLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/workspaces/:workspaceId/boards', boardRoutes);
 app.use('/api/workspaces/:workspaceId/whiteboards', whiteboardRoutes);
 app.use('/api/workspaces/:workspaceId/assets', assetRoutes);
+app.use('/api/workspaces', workspaceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/search', searchRoutes);
