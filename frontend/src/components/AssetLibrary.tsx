@@ -58,9 +58,11 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
             }
 
             const { data } = await api.get(`/workspaces/${workspaceId}/assets?${params.toString()}`);
-            setAssets(data.assets || []);
+            console.log('[AssetLibrary] fetchAssets response:', data);
+            const list = Array.isArray(data) ? data : (data.assets || []);
+            setAssets(list);
         } catch (error) {
-            console.error("Failed to fetch assets", error);
+            console.error("[AssetLibrary] Failed to fetch assets", error);
             toast.error("Failed to load assets");
         } finally {
             setLoading(false);
@@ -318,7 +320,7 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                 >
                                     <div style={{ height: 120, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                                         {getMimeCategory(asset.mimeType) === 'image' ? (
-                                            <img src={asset.url} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                            <img src={asset.fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                         ) : (
                                             renderIcon(asset.mimeType)
                                         )}
