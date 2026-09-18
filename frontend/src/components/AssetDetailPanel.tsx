@@ -61,7 +61,6 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
             }
         };
         fetchDetails();
-        import('@google/model-viewer').catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [assetId, workspaceId]);
 
@@ -108,24 +107,11 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
         }
     };
 
-    if (loading || !asset) {
-        return (
-            <motion.div
-                initial={{ x: 440 }}
-                animate={{ x: 0 }}
-                exit={{ x: 440 }}
-                transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                style={{ position: 'fixed', right: 0, top: 0, height: '100vh', width: 440, background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)', zIndex: 50, padding: 24 }}
-            >
-                Loading...
-            </motion.div>
-        );
-    }
-
-    const category = getMimeCategory(asset.mimeType, asset.fileName);
-    const fileUrl = asset.fileUrl || asset.url || '';
+    const category = asset ? getMimeCategory(asset.mimeType, asset.fileName) : 'other';
+    const fileUrl = asset ? (asset.fileUrl || asset.url || '') : '';
 
     const renderPreview = () => {
+        if (!asset) return null;
         if (category === 'image') {
             return <img src={fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
         }
@@ -158,10 +144,16 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                     <button onClick={onClose} className="btn-ghost" style={{ padding: 6 }}><X size={16} /></button>
                 </div>
 
-                {/* Preview Area */}
-                <div style={{ height: 280, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
-                    {renderPreview()}
-                </div>
+                {loading || !asset ? (
+                    <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                        Loading asset details...
+                    </div>
+                ) : (
+                    <>
+                        {/* Preview Area */}
+                        <div style={{ height: 280, background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)' }}>
+                            {renderPreview()}
+                        </div>
 
                 {/* Details */}
                 <div style={{ padding: 24, flex: 1, overflowY: 'auto' }}>
@@ -244,6 +236,8 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                         <Trash2 size={14} /> Delete
                     </button>
                 </div>
+                </>
+                )}
             </motion.div>
         </>
     );

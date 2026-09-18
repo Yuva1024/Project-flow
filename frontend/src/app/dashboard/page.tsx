@@ -790,6 +790,7 @@ export default function DashboardPage() {
             <AnimatePresence>
                 {selectedAssetId && currentWorkspace && (
                     <AssetDetailPanel
+                        key={selectedAssetId}
                         assetId={selectedAssetId}
                         workspaceId={currentWorkspace.id}
                         onClose={() => setSelectedAssetId(null)}
