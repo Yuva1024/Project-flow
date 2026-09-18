@@ -270,13 +270,46 @@ router.get('/', async (req: AuthRequest, res: any) => {
         const where: any = { workspaceId };
         if (folderId) where.folderId = folderId;
         if (tagId) {
-            where.tags = { some: { tagId } };
+            const ids = (tagId as string).split(',').map(id => id.trim()).filter(Boolean);
+            if (ids.length > 0) {
+                where.tags = { some: { tagId: { in: ids } } };
+            }
         }
         if (search) {
             where.fileName = { contains: search, mode: 'insensitive' };
         }
         if (mimeType) {
-            where.mimeType = { startsWith: mimeType };
+            const types = (mimeType as string).split(',').map(s => s.trim().toLowerCase());
+            const conditions: any[] = [];
+            for (const t of types) {
+                if (t === '3d') {
+                    conditions.push(
+                        { mimeType: { contains: 'gltf' } },
+                        { mimeType: { contains: 'glb' } },
+                        { fileName: { endsWith: '.glb', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.gltf', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.obj', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.fbx', mode: 'insensitive' } }
+                    );
+                } else if (t === 'image') {
+                    conditions.push(
+                        { mimeType: { startsWith: 'image/' } },
+                        { fileName: { endsWith: '.png', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.jpg', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.jpeg', mode: 'insensitive' } },
+                        { fileName: { endsWith: '.webp', mode: 'insensitive' } }
+                    );
+                } else if (t === 'video') {
+                    conditions.push({ mimeType: { startsWith: 'video/' } });
+                } else if (t === 'audio') {
+                    conditions.push({ mimeType: { startsWith: 'audio/' } });
+                } else {
+                    conditions.push({ mimeType: { startsWith: t } });
+                }
+            }
+            if (conditions.length > 0) {
+                where.OR = conditions;
+            }
         }
 
         const total = await prisma.asset.count({ where });
@@ -376,17 +409,50 @@ router.delete('/:assetId', async (req: AuthRequest, res: any) => {
     try {
         const workspaceId = req.params.workspaceId as string;
         const assetId = req.params.assetId as string;
-        const existing = await prisma.asset.findUnique({ where: { id: assetId } });
+        const existing = await prisma.asset.findUnique({
+            where: { id: assetId },
+            include: { cardLinks: true }
+        });
         if (!existing || existing.workspaceId !== workspaceId) return res.status(404).json({ message: 'Asset not found' });
 
-        await deleteFile(existing.fileUrl);
+        // If this asset was attached to any cards, convert those links into local card attachments
+        // so the cards NEVER break and keep their files!
+        const hasLinkedCards = existing.cardLinks && existing.cardLinks.length > 0;
+        if (hasLinkedCards) {
+            for (const link of existing.cardLinks) {
+                await prisma.attachment.create({
+                    data: {
+                        cardId: link.cardId,
+                        fileName: existing.fileName,
+                        fileUrl: existing.fileUrl,
+                        fileSize: existing.fileSize,
+                        mimeType: existing.mimeType,
+                        createdAt: existing.createdAt,
+                    }
+                });
+            }
+        }
+
+        // Check if any other attachments or assets reference this fileUrl
+        const otherAttachment = await prisma.attachment.findFirst({
+            where: { fileUrl: existing.fileUrl }
+        });
+        const otherAsset = await prisma.asset.findFirst({
+            where: { fileUrl: existing.fileUrl, id: { not: assetId } }
+        });
+
+        // Only delete from Cloudflare R2 if NO cards or other library assets reference it
+        if (!hasLinkedCards && !otherAttachment && !otherAsset) {
+            await deleteFile(existing.fileUrl);
+        }
 
         await prisma.assetTagAssignment.deleteMany({ where: { assetId } });
         await prisma.cardAsset.deleteMany({ where: { assetId } });
         await prisma.asset.delete({ where: { id: assetId } });
 
-        res.json({ message: 'Asset deleted' });
+        res.json({ message: 'Asset deleted from library' });
     } catch (error) {
+        console.error('Delete asset error:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 });

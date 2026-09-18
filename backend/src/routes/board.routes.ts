@@ -61,6 +61,7 @@ import {
     getAttachments,
     deleteAttachment,
     saveToAssetLibrary,
+    linkAssetToCard,
 } from '../controllers/attachment.controller';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
 
@@ -148,5 +149,6 @@ router.post('/:boardId/cards/:cardId/attachments', uploadLimiter, upload.single(
 router.get('/:boardId/cards/:cardId/attachments', getAttachments);
 router.delete('/:boardId/cards/:cardId/attachments/:attachmentId', deleteAttachment);
 router.post('/:boardId/cards/:cardId/attachments/:attachmentId/save-to-library', saveToAssetLibrary);
+router.post('/:boardId/cards/:cardId/attachments/link-asset/:assetId', linkAssetToCard);
 
 export default router;

@@ -107,17 +107,27 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
         // Check if it's a local attachment
         const localAttachment = await prisma.attachment.findFirst({ where: { id, cardId } });
         if (localAttachment) {
-            await deleteFile(localAttachment.fileUrl);
+            // Check if any Asset in the library or another card shares this fileUrl
+            const sharedAsset = await prisma.asset.findFirst({ where: { fileUrl: localAttachment.fileUrl } });
+            const otherAttachment = await prisma.attachment.findFirst({
+                where: { fileUrl: localAttachment.fileUrl, id: { not: id } }
+            });
+
+            // Only delete from Cloudflare R2 if NO other Asset or Attachment references it
+            if (!sharedAsset && !otherAttachment) {
+                await deleteFile(localAttachment.fileUrl);
+            }
+
             await prisma.attachment.delete({ where: { id } });
             await logActivity(cardId, req.user!.userId, 'deleted attachment', localAttachment.fileName);
-            return res.json({ message: 'Attachment deleted permanently' });
+            return res.json({ message: 'Attachment deleted' });
         }
 
         // Check if it's an asset link
         const cardAsset = await prisma.cardAsset.findUnique({ where: { cardId_assetId: { cardId, assetId: id } } });
         if (cardAsset) {
             await prisma.cardAsset.delete({ where: { id: cardAsset.id } });
-            await logActivity(cardId, req.user!.userId, 'unlinked asset', '');
+            await logActivity(cardId, req.user!.userId, 'unlinked asset from card', '');
             return res.json({ message: 'Asset unlinked from card' });
         }
 
@@ -162,12 +172,42 @@ export const saveToAssetLibrary = async (req: AuthRequest, res: Response) => {
             },
         });
 
-        // Delete old attachment
+        // Delete old attachment row
         await prisma.attachment.delete({ where: { id: attachmentId } });
 
         res.json({ ...asset, isLibraryAsset: true });
     } catch (error) {
         console.error('Save to asset library error:', error);
         res.status(500).json({ message: 'Failed to save to asset library' });
+    }
+};
+
+export const linkAssetToCard = async (req: AuthRequest, res: Response) => {
+    try {
+        const workspaceId = req.params.workspaceId as string;
+        const cardId = req.params.cardId as string;
+        const assetId = req.params.assetId as string;
+        const userId = req.user!.userId;
+
+        const card = await assertCardAccess(workspaceId, cardId, userId);
+        if (!card) return res.status(404).json({ message: 'Card not found or access denied' });
+
+        const asset = await prisma.asset.findFirst({ where: { id: assetId, workspaceId } });
+        if (!asset) return res.status(404).json({ message: 'Asset not found in this workspace' });
+
+        const existing = await prisma.cardAsset.findUnique({
+            where: { cardId_assetId: { cardId, assetId } }
+        });
+        if (!existing) {
+            await prisma.cardAsset.create({
+                data: { cardId, assetId }
+            });
+            await logActivity(cardId, userId, 'attached library asset', asset.fileName);
+        }
+
+        res.status(201).json({ ...asset, isLibraryAsset: true });
+    } catch (error) {
+        console.error('Link asset to card error:', error);
+        res.status(500).json({ message: 'Failed to link asset to card' });
     }
 };

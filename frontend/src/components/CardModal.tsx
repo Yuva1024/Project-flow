@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye } from "lucide-react";
+import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye, FolderOpen, Search } from "lucide-react";
 import { Card } from "@/store/board";
 
 // three.js is heavy — load it only when a 3D section actually renders
@@ -107,6 +107,50 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const [isUploading, setIsUploading] = useState(false);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
+
+    // Library Picker State
+    const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+    const [libraryAssets, setLibraryAssets] = useState<any[]>([]);
+    const [librarySearch, setLibrarySearch] = useState("");
+    const [libraryLoading, setLibraryLoading] = useState(false);
+
+    useEffect(() => {
+        if (showLibraryPicker) {
+            setLibraryLoading(true);
+            api.get(`/workspaces/${wId}/assets`)
+                .then(r => {
+                    const list = Array.isArray(r.data) ? r.data : (r.data?.assets || []);
+                    setLibraryAssets(list);
+                })
+                .catch(() => toast.error("Failed to load library assets"))
+                .finally(() => setLibraryLoading(false));
+        }
+    }, [showLibraryPicker, wId]);
+
+    const handleSaveToLibrary = async (attachmentId: string) => {
+        try {
+            toast.loading("Saving to Asset Library...", { id: "save-to-lib" });
+            const { data } = await api.post(`${cardBase}/attachments/${attachmentId}/save-to-library`);
+            setAttachments(prev => prev.map(a => a.id === attachmentId ? { ...a, ...data, isLibraryAsset: true } : a));
+            toast.success("Saved to Workspace Asset Library!", { id: "save-to-lib" });
+        } catch {
+            toast.error("Failed to save to Asset Library", { id: "save-to-lib" });
+        }
+    };
+
+    const handleLinkAsset = async (assetId: string) => {
+        try {
+            const { data } = await api.post(`${cardBase}/attachments/link-asset/${assetId}`);
+            setAttachments(prev => {
+                if (prev.some(a => a.id === data.id || a.fileUrl === data.fileUrl)) return prev;
+                return [data, ...prev];
+            });
+            toast.success(`Attached "${data.fileName}" from Library`);
+            setShowLibraryPicker(false);
+        } catch {
+            toast.error("Failed to link asset");
+        }
+    };
 
     useEffect(() => {
         api.get(`${cardBase}/comments`).then(r => setComments(r.data)).catch(() => { });
@@ -708,12 +752,22 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                         <X size={12} /> Cancel Upload
                                     </button>
                                 ) : (
-                                    <label style={{ cursor: "pointer" }}>
-                                        <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
-                                        <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
-                                            <Plus size={11} /> Add File
-                                        </span>
-                                    </label>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowLibraryPicker(true)}
+                                            className="btn-secondary"
+                                            style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5 }}
+                                        >
+                                            <FolderOpen size={12} /> Attach from Library
+                                        </button>
+                                        <label style={{ cursor: "pointer" }}>
+                                            <input type="file" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
+                                            <span className="btn-secondary" style={{ fontSize: 11, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>
+                                                <Plus size={11} /> Add File
+                                            </span>
+                                        </label>
+                                    </div>
                                 )}
                             </div>
 
@@ -819,7 +873,28 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                         <button onClick={() => forceDownload(att.fileUrl, att.fileName)} className="btn-secondary" style={{ fontSize: 11, padding: "5px 10px", display: "flex", alignItems: "center", gap: 5 }}>
                                                             <Download size={12} /> Download
                                                         </button>
-                                                        <button onClick={() => handleDeleteAttachment(att.id)} style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }} title="Delete attachment" onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"} onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}>
+                                                        {att.isLibraryAsset ? (
+                                                            <span style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 8px", borderRadius: 4, background: "rgba(99, 102, 241, 0.12)", color: "var(--accent)", display: "flex", alignItems: "center", gap: 4, border: "1px solid rgba(99, 102, 241, 0.25)" }} title="This file is linked to the Workspace Asset Library">
+                                                                <FolderOpen size={11} /> In Library
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSaveToLibrary(att.id)}
+                                                                className="btn-secondary"
+                                                                style={{ fontSize: 10.5, padding: "5px 9px", display: "flex", alignItems: "center", gap: 4, color: "var(--text-secondary)" }}
+                                                                title="Save this file to the Workspace Asset Library so other cards can also use it"
+                                                            >
+                                                                <Plus size={11} /> Add to Library
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleDeleteAttachment(att.id)}
+                                                            style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}
+                                                            title={att.isLibraryAsset ? "Remove from this card (stays safe in Asset Library)" : "Delete attachment"}
+                                                            onMouseOver={(e) => e.currentTarget.style.color = "var(--danger)"}
+                                                            onMouseOut={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                                                        >
                                                             <Trash2 size={13} />
                                                         </button>
                                                     </div>
@@ -1003,6 +1078,126 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                             </div>
                         )}
                         <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginTop: 14 }}>{lightboxMedia.title}</div>
+                    </div>
+                </div>
+            )}
+
+            {/* Attach from Library Modal */}
+            {showLibraryPicker && (
+                <div style={{ position: "fixed", inset: 0, zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0, 0, 0, 0.65)", backdropFilter: "blur(6px)", padding: 20 }}>
+                    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)", width: "100%", maxWidth: 640, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)", overflow: "hidden" }}>
+                        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99, 102, 241, 0.15)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <FolderOpen size={18} />
+                                </div>
+                                <div>
+                                    <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>Attach from Asset Library</h3>
+                                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 0" }}>Select a file from your workspace library to attach to this card</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowLibraryPicker(false)} className="btn-ghost" style={{ padding: 6, borderRadius: 6, color: "var(--text-muted)" }}>
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Search bar */}
+                        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+                            <div style={{ position: "relative" }}>
+                                <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                                <input
+                                    type="text"
+                                    placeholder="Search library assets..."
+                                    value={librarySearch}
+                                    onChange={(e) => setLibrarySearch(e.target.value)}
+                                    style={{ width: "100%", paddingLeft: 34, paddingRight: 12, paddingTop: 8, paddingBottom: 8, fontSize: 12.5, borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+
+                        {/* Asset List / Grid */}
+                        <div style={{ padding: 16, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                            {libraryLoading ? (
+                                <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Loading workspace assets...</div>
+                            ) : libraryAssets.filter(a => !librarySearch || a.fileName.toLowerCase().includes(librarySearch.toLowerCase())).length === 0 ? (
+                                <div style={{ padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                                    {librarySearch ? "No assets match your search" : "No assets in the Workspace Asset Library yet."}
+                                </div>
+                            ) : (
+                                libraryAssets
+                                    .filter(a => !librarySearch || a.fileName.toLowerCase().includes(librarySearch.toLowerCase()))
+                                    .map((asset: any) => {
+                                        const isAlreadyAttached = attachments.some(a => a.fileUrl === asset.fileUrl || a.id === asset.id);
+                                        const isImage = asset.mimeType?.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(asset.fileName);
+                                        const is3D = asset.fileName.toLowerCase().endsWith('.glb') || asset.fileName.toLowerCase().endsWith('.gltf') || asset.fileName.toLowerCase().endsWith('.obj') || asset.fileName.toLowerCase().endsWith('.fbx');
+                                        const isVideo = asset.mimeType?.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(asset.fileName);
+
+                                        return (
+                                            <div
+                                                key={asset.id}
+                                                style={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "space-between",
+                                                    padding: "10px 14px",
+                                                    borderRadius: "var(--radius)",
+                                                    border: "1px solid var(--border)",
+                                                    background: "var(--bg-elevated)",
+                                                    gap: 12
+                                                }}
+                                            >
+                                                <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden", flex: 1 }}>
+                                                    <div style={{ width: 38, height: 38, borderRadius: 6, background: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                                                        {isImage ? (
+                                                            <img src={asset.fileUrl} alt={asset.fileName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                                        ) : is3D ? (
+                                                            <Box size={18} style={{ color: "var(--accent)" }} />
+                                                        ) : isVideo ? (
+                                                            <Video size={18} style={{ color: "var(--text-secondary)" }} />
+                                                        ) : (
+                                                            <FileIcon size={18} style={{ color: "var(--text-muted)" }} />
+                                                        )}
+                                                    </div>
+                                                    <div style={{ overflow: "hidden", flex: 1 }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                            {asset.fileName}
+                                                        </div>
+                                                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                                                            {formatFileSize(asset.fileSize)} • {new Date(asset.createdAt).toLocaleDateString()}
+                                                            {asset.folder?.name && ` • Folder: ${asset.folder.name}`}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    disabled={isAlreadyAttached}
+                                                    onClick={() => handleLinkAsset(asset.id)}
+                                                    className={isAlreadyAttached ? "btn-secondary" : "btn-primary"}
+                                                    style={{
+                                                        fontSize: 11.5,
+                                                        padding: "6px 12px",
+                                                        opacity: isAlreadyAttached ? 0.6 : 1,
+                                                        cursor: isAlreadyAttached ? "not-allowed" : "pointer",
+                                                        flexShrink: 0
+                                                    }}
+                                                >
+                                                    {isAlreadyAttached ? (
+                                                        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                                            <Check size={12} /> Attached
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                                            <Plus size={12} /> Attach to Card
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
