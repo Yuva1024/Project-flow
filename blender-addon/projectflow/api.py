@@ -265,9 +265,6 @@ class ApiClient:
                 return
             page += 1
 
-    def asset(self, workspace_id: str, asset_id: str) -> Dict[str, Any]:
-        return self.request("GET", f"/api/workspaces/{workspace_id}/assets/{asset_id}")
-
     def link_asset_to_card(
         self, workspace_id: str, board_id: str, card_id: str, asset_id: str
     ) -> Dict[str, Any]:
@@ -388,12 +385,6 @@ class ApiClient:
             f"/cards/{card_id}/attachments/{attachment_id}/preview",
             file_path,
         )
-
-    def upload_library_asset(
-        self, workspace_id: str, file_path: str, folder_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        fields = {"folderId": folder_id} if folder_id else None
-        return self._upload(f"/api/workspaces/{workspace_id}/assets", file_path, fields)
 
     def _upload(
         self,

@@ -5,6 +5,8 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { X, Download, Trash2, File, Image as ImageIcon, Music, Video, Box, Tag, Plus, GitBranch } from 'lucide-react';
 
+import SendToDiversionModal from '@/components/assets/SendToDiversionModal';
+
 interface AssetDetailPanelProps {
     assetId: string;
     workspaceId: string;
@@ -35,6 +37,10 @@ function getMimeCategory(mime?: string, fileName?: string): string {
 }
 
 export default function AssetDetailPanel({ assetId, workspaceId, onClose }: AssetDetailPanelProps) {
+    // The Diversion export has been fully implemented on the server for a
+    // while — three endpoints and a zero-disk R2 streaming service — but no
+    // screen ever opened this modal, so the feature was unreachable.
+    const [showDiversion, setShowDiversion] = useState(false);
     const [asset, setAsset] = useState<any>(null);
     const [tags, setTags] = useState<any[]>([]); // All workspace tags
     const [loading, setLoading] = useState(true);
@@ -278,6 +284,12 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                     <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={asset.fileName} className="btn-secondary" style={{ flex: 1, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         <Download size={14} /> Download
                     </a>
+                    <button onClick={() => setShowDiversion(true)}
+                            className="btn-secondary"
+                            title="Stream this asset straight from storage into a Diversion repository"
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <GitBranch size={14} /> Send to Diversion
+                    </button>
                     <button onClick={handleDelete} className="btn-danger" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         <Trash2 size={14} /> Delete
                     </button>
@@ -285,6 +297,21 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                 </>
                 )}
             </motion.div>
+
+            {asset && (
+                <SendToDiversionModal
+                    isOpen={showDiversion}
+                    onClose={() => setShowDiversion(false)}
+                    asset={{
+                        id: asset.id,
+                        fileName: asset.fileName,
+                        fileSize: asset.fileSize,
+                        fileUrl: asset.fileUrl,
+                    }}
+                    workspaceId={workspaceId}
+                    onSuccess={() => setShowDiversion(false)}
+                />
+            )}
         </>
     );
 }

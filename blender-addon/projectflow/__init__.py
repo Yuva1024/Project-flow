@@ -18,6 +18,7 @@ from . import (
     ops_assets,
     ops_auth,
     ops_boards,
+    ops_card_extras,
     ops_presets,
     preferences,
     properties,
@@ -36,6 +37,7 @@ _modules = (
     ops_assets,
     ops_presets,
     ops_boards,
+    ops_card_extras,
     ui,
 )
 

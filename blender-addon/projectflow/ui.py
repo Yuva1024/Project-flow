@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel, UIList
 
-from . import properties, session, tasks
+from . import ops_card_extras, properties, session, tasks
 from .preferences import get_preferences
 
 CATEGORY = "ProjectFlow"
@@ -295,6 +295,12 @@ class PROJECTFLOW_PT_card(ProjectFlowPanelBase, Panel):
             )
             op.advance = False
 
+        library = actions.row(align=True)
+        library.enabled = not props.busy
+        library.operator(
+            "projectflow.pick_library_asset", text="Attach from Library", icon="LINKED"
+        )
+
         if not has_selection:
             note = layout.row()
             note.scale_y = 0.8
@@ -354,6 +360,104 @@ class PROJECTFLOW_PT_card_attachments(ProjectFlowPanelBase, Panel):
         layout.operator("projectflow.open_card_in_browser", text="View in Browser", icon="URL")
 
 
+class PROJECTFLOW_PT_card_checklists(ProjectFlowPanelBase, Panel):
+    bl_label = "Checklist"
+    bl_idname = "PROJECTFLOW_PT_card_checklists"
+    bl_parent_id = "PROJECTFLOW_PT_card"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        props = getattr(context.window_manager, "projectflow", None)
+        return props is not None and props.active_card() is not None
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.window_manager.projectflow
+        item = props.active_card()
+
+        lists = ops_card_extras.checklists.get(item.card_id)
+        if lists is None:
+            layout.operator(
+                "projectflow.load_checklists", text="Load Checklist", icon="IMPORT"
+            )
+            return
+
+        if not lists:
+            layout.label(text="No checklists on this card", icon="CHECKMARK")
+            layout.operator("projectflow.load_checklists", text="", icon="FILE_REFRESH")
+            return
+
+        for checklist in lists:
+            items = checklist.get("items") or []
+            done = sum(1 for i in items if i.get("isChecked"))
+
+            box = layout.box()
+            header = box.row()
+            header.label(text=checklist.get("title", "Checklist"), icon="CHECKBOX_HLT")
+            header.label(text=f"{done}/{len(items)}")
+
+            column = box.column(align=True)
+            for entry in items:
+                checked = bool(entry.get("isChecked"))
+                row = column.row(align=True)
+                op = row.operator(
+                    "projectflow.toggle_checklist_item",
+                    text=entry.get("content", ""),
+                    icon="CHECKBOX_HLT" if checked else "CHECKBOX_DEHLT",
+                    emboss=False,
+                )
+                op.checklist_id = checklist.get("id", "")
+                op.item_id = entry.get("id", "")
+                op.is_checked = checked
+
+        layout.operator("projectflow.load_checklists", text="Refresh", icon="FILE_REFRESH")
+
+
+class PROJECTFLOW_PT_card_activity(ProjectFlowPanelBase, Panel):
+    bl_label = "Activity"
+    bl_idname = "PROJECTFLOW_PT_card_activity"
+    bl_parent_id = "PROJECTFLOW_PT_card"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        props = getattr(context.window_manager, "projectflow", None)
+        return props is not None and props.active_card() is not None
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.window_manager.projectflow
+        item = props.active_card()
+
+        entries = ops_card_extras.activity.get(item.card_id)
+        if entries is None:
+            layout.operator(
+                "projectflow.load_activity", text="Load Activity", icon="IMPORT"
+            )
+            return
+
+        if not entries:
+            layout.label(text="No activity yet", icon="INFO")
+            return
+
+        # The server logs every move, so this doubles as the card's pipeline
+        # history: who moved it between stages, and when.
+        column = layout.column(align=True)
+        column.scale_y = 0.85
+        for entry in entries:
+            user = (entry.get("user") or {}).get("name", "Someone")
+            action = entry.get("action", "")
+            details = entry.get("details") or ""
+            text = f"{user} {action}"
+            if details:
+                text = f"{text} — {details}"
+            _wrapped_label(column, text, limit=110, width=40)
+            column.separator(factor=0.4)
+
+        layout.operator("projectflow.load_activity", text="Refresh", icon="FILE_REFRESH")
+
+
 def _wrapped_label(layout, text: str, limit: int = 400, width: int = 38) -> None:
     """Crude word wrapping.
 
@@ -386,6 +490,8 @@ classes = (
     PROJECTFLOW_PT_boards,
     PROJECTFLOW_PT_card,
     PROJECTFLOW_PT_card_attachments,
+    PROJECTFLOW_PT_card_checklists,
+    PROJECTFLOW_PT_card_activity,
 )
 
 

@@ -441,6 +441,135 @@ def check_for_updates() -> None:
     notify(f"Reimported {done}, failed {failed}.")
 
 
+# -- writing back ----------------------------------------------------------
+
+
+def advance_card(board: Dict[str, Any], card: Dict[str, Any]) -> None:
+    """Moves a card to the next section of the pipeline.
+
+    Cards flow forward through sections, so 'next' is simply the following
+    entry — the board payload already returns them in order.
+    """
+    sections = board.get("lists") or []
+    card_id = card.get("id", "")
+
+    index = next(
+        (
+            i
+            for i, section in enumerate(sections)
+            for c in (section.get("cards") or [])
+            if c.get("id") == card_id
+        ),
+        None,
+    )
+
+    if index is None:
+        notify("Could not find that card on the board. Try Refresh.")
+        return
+    if index + 1 >= len(sections):
+        notify(f"'{card.get('title')}' is already in the final section.")
+        return
+
+    target = sections[index + 1]
+    if not confirm(
+        f"Move '{card.get('title')}' to '{target.get('title')}'?"
+    ):
+        return
+
+    try:
+        client().move_card(
+            config.get("workspace_id"), board.get("id", ""), card_id, target.get("id", "")
+        )
+    except api.ApiError as exc:
+        notify(report_error(exc))
+        return
+
+    notify(f"Moved to {target.get('title')}.")
+    # Refetch rather than patching the cache: someone else may have changed the
+    # board, and there is no live channel to tell us.
+    load_board(board.get("id", ""))
+
+
+def comment_on_card(board: Dict[str, Any], card: Dict[str, Any]) -> None:
+    """Posts a comment without leaving the editor.
+
+    Worth having here specifically: the useful comment is usually about how the
+    asset behaves once it is in the level, which is exactly the moment someone
+    would otherwise have to alt-tab to a browser and lose the thought.
+    """
+    content = _prompt_text(
+        f"Comment on {card.get('title')}",
+        "Your comment will appear on the card.",
+    )
+    if not content or not content.strip():
+        return
+
+    try:
+        client().add_comment(
+            config.get("workspace_id"),
+            board.get("id", ""),
+            card.get("id", ""),
+            content.strip(),
+        )
+    except api.ApiError as exc:
+        notify(report_error(exc))
+        return
+
+    notify("Comment posted.")
+
+
+def prune_cache() -> None:
+    """Deletes cached source files nothing in the library refers to any more.
+
+    Only files whose hash no longer appears in the workspace are removed, so a
+    file still backing an asset is never touched. Re-downloading is cheap
+    anyway — R2 egress is free — but disk is not infinite.
+    """
+    import os
+
+    assets = state.get("assets") or []
+    if not assets:
+        notify("Nothing loaded. Try ProjectFlow > Refresh first.")
+        return
+
+    referenced = set()
+    for asset in assets:
+        parsed = importer.parse_hash(asset.get("fileUrl", ""))
+        if parsed:
+            referenced.add(f"{parsed[0]}{parsed[1]}")
+
+    cache = config.cache_dir()
+    stale = [n for n in os.listdir(cache) if n not in referenced]
+
+    if not stale:
+        notify("Nothing to clean up — every cached file is still in use.")
+        return
+
+    freed = 0
+    for name in stale:
+        try:
+            freed += os.path.getsize(os.path.join(cache, name))
+        except OSError:
+            pass
+
+    if not confirm(
+        f"Delete {len(stale)} cached file(s), freeing {freed / (1024 * 1024):.1f} MB?\n\n"
+        "These are downloads for assets no longer in the library. Imported "
+        "assets in the Content Browser are not affected."
+    ):
+        return
+
+    removed = 0
+    for name in stale:
+        try:
+            os.remove(os.path.join(cache, name))
+            removed += 1
+        except OSError:
+            pass
+
+    notify(f"Removed {removed} cached file(s).")
+
+
 def open_settings() -> None:
     """Shows the current configuration and where to change it."""
     settings = config.load_settings()

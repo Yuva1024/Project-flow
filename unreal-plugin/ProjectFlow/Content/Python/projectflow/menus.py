@@ -268,6 +268,16 @@ def _build_card_menu(parent, board: Dict[str, Any], card: Dict[str, Any]) -> Non
         "Fetch this card's files so they can be imported",
         lambda b=board, c=card: _load_card_attachments(b, c),
     )
+    _add_entry(
+        menu, "card", "Advance", "Move to Next Section",
+        "Move this card forward through the pipeline",
+        lambda b=board, c=card: actions.advance_card(b, c),
+    )
+    _add_entry(
+        menu, "card", "Comment", "Add Comment...",
+        "Post a comment on this card without leaving the editor",
+        lambda b=board, c=card: actions.comment_on_card(b, c),
+    )
 
     cached = _attachment_cache.get(card_id)
     if cached is None:
@@ -324,6 +334,9 @@ def _build_tools_section(root) -> None:
     _add_entry(root, "tools", "CheckUpdates", "Check for Updates...",
                "Find imported assets with a newer version and reimport them",
                actions.check_for_updates)
+    _add_entry(root, "tools", "PruneCache", "Clean Up Cache...",
+               "Delete downloads for assets no longer in the library",
+               actions.prune_cache)
     _add_entry(root, "tools", "Settings", "Settings...",
                "Show the current configuration", actions.open_settings)
     _add_entry(root, "tools", "SignOut", "Sign Out",
