@@ -1,0 +1,24 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "ProjectFlow",
+  "Description": "Browse ProjectFlow boards, cards and the workspace asset library from inside the editor, and import assets straight into the Content Browser.",
+  "Category": "Pipeline",
+  "CreatedBy": "ProjectFlow Team",
+  "DocsURL": "https://github.com/Yuva1024/Project-flow",
+  "CanContainContent": true,
+  "IsBetaVersion": true,
+  "Installed": false,
+  "Modules": [],
+  "Plugins": [
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true
+    },
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
+  ]
+}
