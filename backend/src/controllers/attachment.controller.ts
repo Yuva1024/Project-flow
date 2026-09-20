@@ -118,6 +118,20 @@ export const deleteAttachment = async (req: AuthRequest, res: Response) => {
                 await deleteFile(localAttachment.fileUrl);
             }
 
+            // The paired preview is a CAS object like any other, so it needs the
+            // same reference check before its bytes go.
+            if (localAttachment.previewUrl) {
+                const previewUrl = localAttachment.previewUrl;
+                const [previewAsset, previewElsewhere, previewAsMain] = await Promise.all([
+                    prisma.asset.findFirst({ where: { fileUrl: previewUrl } }),
+                    prisma.attachment.findFirst({ where: { previewUrl, id: { not: id } } }),
+                    prisma.attachment.findFirst({ where: { fileUrl: previewUrl, id: { not: id } } }),
+                ]);
+                if (!previewAsset && !previewElsewhere && !previewAsMain) {
+                    await deleteFile(previewUrl);
+                }
+            }
+
             await prisma.attachment.delete({ where: { id } });
             await logActivity(cardId, req.user!.userId, 'deleted attachment', localAttachment.fileName);
             return res.json({ message: 'Attachment deleted' });
@@ -209,5 +223,67 @@ export const linkAssetToCard = async (req: AuthRequest, res: Response) => {
     } catch (error) {
         console.error('Link asset to card error:', error);
         res.status(500).json({ message: 'Failed to link asset to card' });
+    }
+};
+
+/**
+ * POST /:boardId/cards/:cardId/attachments/:attachmentId/preview
+ *
+ * Attaches a browser-renderable stand-in to an existing attachment.
+ *
+ * Exists because the two useful formats pull in opposite directions: an FBX
+ * imports cleanly into a game engine but <model-viewer> cannot read it, while a
+ * GLB previews everywhere but is the wrong hand-off for the engine. Uploading
+ * both as separate attachments clutters the card and loses the relationship
+ * between them. This keeps one row: Download returns the real file, the preview
+ * is what the card renders.
+ */
+export const uploadAttachmentPreview = async (req: AuthRequest, res: Response) => {
+    try {
+        const workspaceId = req.params.workspaceId as string;
+        const cardId = req.params.cardId as string;
+        const attachmentId = req.params.attachmentId as string;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ message: 'No file uploaded' });
+        }
+
+        const card = await assertCardAccess(workspaceId, cardId, req.user!.userId);
+        if (!card) {
+            return res.status(404).json({ message: 'Card not found or access denied' });
+        }
+
+        const attachment = await prisma.attachment.findFirst({
+            where: { id: attachmentId, cardId },
+        });
+        if (!attachment) {
+            return res.status(404).json({ message: 'Attachment not found' });
+        }
+
+        // Only glTF renders in the browser, so anything else would be a preview
+        // that cannot preview.
+        const name = file.originalname.toLowerCase();
+        if (!name.endsWith('.glb') && !name.endsWith('.gltf')) {
+            return res.status(400).json({
+                message: 'A preview must be a .glb or .gltf file',
+            });
+        }
+
+        const { fileUrl } = await uploadFile(file);
+
+        const updated = await prisma.attachment.update({
+            where: { id: attachmentId },
+            data: {
+                previewUrl: fileUrl,
+                previewFileName: file.originalname,
+                previewFileSize: file.size,
+            },
+        });
+
+        res.json({ ...updated, isLibraryAsset: false });
+    } catch (error) {
+        console.error('Upload attachment preview error:', error);
+        res.status(500).json({ message: 'Failed to attach preview' });
     }
 };

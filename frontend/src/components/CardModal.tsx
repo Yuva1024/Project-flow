@@ -106,6 +106,10 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const [attachments, setAttachments] = useState<any[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+    /** True only when the drag carries files from outside the browser. */
+    const isFileDrag = (e: React.DragEvent) =>
+        Array.from(e.dataTransfer?.types ?? []).includes("Files");
     const [showAttachmentPicker, setShowAttachmentPicker] = useState(false);
 
     // Library Picker State
@@ -654,8 +658,20 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                  exit={{ x: "100%" }}
                  transition={{ type: "spring", bounce: 0, duration: 0.4 }}
                  onPaste={handlePaste}
-                 onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
-                 onDragLeave={() => setIsDraggingOver(false)}
+                 onDragOver={(e) => {
+                     // Only react to files coming from outside the page. Dragging an
+                     // attachment row (or orbiting a 3D preview, which starts a drag
+                     // on its draggable parent) must not raise the upload overlay.
+                     if (!isFileDrag(e)) return;
+                     e.preventDefault();
+                     setIsDraggingOver(true);
+                 }}
+                 onDragLeave={(e) => {
+                     // dragleave also fires when crossing into a child element, so
+                     // ignore it unless the pointer has genuinely left the sheet.
+                     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                     setIsDraggingOver(false);
+                 }}
                  onDrop={handleDrop}
                  style={{
                      position: 'relative',
@@ -810,13 +826,24 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                     {attachments.map((att: any) => {
                                         const isImage = att.mimeType?.startsWith("image/");
                                         const isVideo = att.mimeType?.startsWith("video/");
-                                        const is3D = att.fileName.toLowerCase().endsWith('.glb') || att.fileName.toLowerCase().endsWith('.gltf');
+                                        // A file the viewer can render directly, OR one carrying a
+                                        // paired GLB stand-in (an FBX for the engine, a GLB to look at).
+                                        const isRenderable3D = att.fileName.toLowerCase().endsWith('.glb') || att.fileName.toLowerCase().endsWith('.gltf');
+                                        const previewUrl = att.previewUrl || (isRenderable3D ? att.fileUrl : null);
+                                        const is3D = Boolean(previewUrl);
+                                        // True when the download and the thing on screen are different files.
+                                        const hasPairedPreview = Boolean(att.previewUrl) && !isRenderable3D;
 
                                         return (
                                             <div key={att.id}
                                                  draggable={is3D}
                                                  onDragStart={is3D ? (e) => {
-                                                     const payload = JSON.stringify({ is3DAttachment: true, id: att.id, fileName: att.fileName, fileUrl: att.fileUrl, fileSize: att.fileSize });
+                                                     // The preview cancels dragstart, so reaching here means the drag
+                                                     // began on the row itself rather than inside the viewer.
+                                                     // Carries the renderable URL: dropping an FBX into a 3D Viewer
+                                                     // section has to show its GLB stand-in, not the FBX the viewer
+                                                     // cannot parse.
+                                                     const payload = JSON.stringify({ is3DAttachment: true, id: att.id, fileName: att.fileName, fileUrl: previewUrl, downloadUrl: att.fileUrl, fileSize: att.fileSize });
                                                      e.dataTransfer.setData("text/plain", payload);
                                                      e.dataTransfer.setData("application/x-3d-attachment", payload);
                                                      e.dataTransfer.effectAllowed = "copy";
@@ -836,12 +863,24 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                     </div>
                                                 )}
                                                 {is3D && (
-                                                    <div style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", height: 180, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                                                    // draggable={false} + stopping dragstart here keeps click-drag
+                                                    // inside the viewer, where model-viewer uses it to orbit. Without
+                                                    // this the browser starts dragging the row instead and the model
+                                                    // cannot be rotated at all.
+                                                    <div draggable={false}
+                                                         onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                                         style={{ borderRadius: "var(--radius-sm)", overflow: "hidden", height: 180, background: "var(--bg-card)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                                                        {hasPairedPreview && (
+                                                            <div style={{ position: "absolute", top: 8, left: 8, zIndex: 2, padding: "3px 8px", borderRadius: 999, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: 0.3, pointerEvents: "none" }}
+                                                                 title="Preview only. Download gives you the original file.">
+                                                                Preview · downloads {att.fileName.split('.').pop()?.toUpperCase()}
+                                                            </div>
+                                                        )}
                                                         {(() => {
                                                             const ModelViewer = 'model-viewer' as any;
                                                             return (
                                                                 <ModelViewer
-                                                                    src={att.fileUrl}
+                                                                    src={previewUrl}
                                                                     loading="lazy"
                                                                     reveal="auto"
                                                                     camera-controls

@@ -498,14 +498,18 @@ class PROJECTFLOW_OT_attach_selection(Operator):
                 workspace_id, board_id, card_id, export_path
             )
             if preview_path:
-                # Uploaded after the real file so a preview failure cannot cost
-                # the artist their actual export.
-                try:
-                    client.upload_card_attachment(
-                        workspace_id, board_id, card_id, preview_path
-                    )
-                except api.ApiError as exc:
-                    print(f"[ProjectFlow] Preview upload failed: {exc.message}")
+                # Attached to the row just created rather than uploaded as a
+                # second file, so the card shows one entry: the FBX downloads,
+                # the GLB is what the browser renders. Done after the real
+                # upload so a preview failure cannot cost the artist their export.
+                attachment_id = (result or {}).get("id")
+                if attachment_id:
+                    try:
+                        client.upload_attachment_preview(
+                            workspace_id, board_id, card_id, attachment_id, preview_path
+                        )
+                    except api.ApiError as exc:
+                        print(f"[ProjectFlow] Preview upload failed: {exc.message}")
             if should_advance and next_stage:
                 client.move_card(workspace_id, board_id, card_id, next_stage["id"])
             return result

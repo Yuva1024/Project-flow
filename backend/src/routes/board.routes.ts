@@ -60,6 +60,7 @@ import {
     deleteAttachment,
     saveToAssetLibrary,
     linkAssetToCard,
+    uploadAttachmentPreview,
 } from '../controllers/attachment.controller';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
 import { createUpload, MAX_ATTACHMENT_SIZE } from '../middleware/upload.middleware';
@@ -135,6 +136,8 @@ router.post('/:boardId/cards/:cardId/attachments', uploadLimiter, upload.single(
 router.get('/:boardId/cards/:cardId/attachments', getAttachments);
 router.delete('/:boardId/cards/:cardId/attachments/:attachmentId', deleteAttachment);
 router.post('/:boardId/cards/:cardId/attachments/:attachmentId/save-to-library', saveToAssetLibrary);
+// Pairs a browser-renderable GLB with an attachment the viewer cannot read.
+router.post('/:boardId/cards/:cardId/attachments/:attachmentId/preview', uploadLimiter, upload.single('file'), uploadAttachmentPreview);
 router.post('/:boardId/cards/:cardId/attachments/link-asset/:assetId', linkAssetToCard);
 
 export default router;

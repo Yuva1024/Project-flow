@@ -370,6 +370,25 @@ class ApiClient:
             file_path,
         )
 
+    def upload_attachment_preview(
+        self,
+        workspace_id: str,
+        board_id: str,
+        card_id: str,
+        attachment_id: str,
+        file_path: str,
+    ) -> Dict[str, Any]:
+        """Pairs a renderable GLB with an attachment the web viewer cannot read.
+
+        Attaches to the existing row rather than creating a second one, so the
+        card shows one file: the FBX downloads, the GLB is what renders.
+        """
+        return self._upload(
+            f"/api/workspaces/{workspace_id}/boards/{board_id}"
+            f"/cards/{card_id}/attachments/{attachment_id}/preview",
+            file_path,
+        )
+
     def upload_library_asset(
         self, workspace_id: str, file_path: str, folder_id: Optional[str] = None
     ) -> Dict[str, Any]:

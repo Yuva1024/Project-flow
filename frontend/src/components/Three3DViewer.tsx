@@ -85,7 +85,11 @@ export default function Three3DViewer({
 
         // 1. Scene
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color("#0d0f1d");
+        // Left transparent (the renderer is created with alpha) so the container's
+        // themed background shows through. A hardcoded colour here made this
+        // viewer look nothing like the <model-viewer> previews elsewhere on the
+        // card, and ignored light mode entirely.
+        scene.background = null;
         sceneRef.current = scene;
 
         // 2. Camera with ultra-near clipping plane (0.001) so zooming close never cuts off mesh geometry

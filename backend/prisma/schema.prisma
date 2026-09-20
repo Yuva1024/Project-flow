@@ -194,10 +194,20 @@ model Attachment {
   fileSize  Int
   mimeType  String
   createdAt DateTime @default(now())
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  /// Optional glTF stand-in for a file the browser cannot render.
+  /// An FBX imports best into a game engine but <model-viewer> only reads
+  /// glTF, so an FBX attachment can carry a small GLB here: the card previews
+  /// the GLB while Download still returns the FBX. One row, not two.
+  previewUrl      String?
+  previewFileName String?
+  previewFileSize Int?
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
   @@index([cardId])
   @@index([fileUrl])
+  @@index([previewUrl])
 }
 
 model ActivityLog {
