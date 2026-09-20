@@ -44,6 +44,9 @@ function getEffectiveToken(apiKey?: string): string {
     return token;
 }
 
+/** Upload window for large binary assets. Every other call uses a short timeout. */
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
 function getBaseUrl(): string {
     return (process.env.DIVERSION_API_BASE_URL || 'https://api.diversion.dev/v0').replace(/\/+$/, '');
 }
@@ -335,10 +338,18 @@ export const streamAssetToDiversion = async (options: SendToDiversionOptions): P
         }
     }
 
-    // 3. Normalize destination path: turn Windows backslashes into forward slashes
-    let cleanPath = targetPath.replace(/\\+/g, '/').replace(/^\/+|\/+$/g, '');
-    if (!cleanPath.toLowerCase().endsWith(asset.fileName.toLowerCase())) {
-        cleanPath = cleanPath ? `${cleanPath}/${asset.fileName}` : asset.fileName;
+    // 3. Normalize destination path: turn Windows backslashes into forward slashes,
+    //    then drop any '.'/'..' segments. encodeURIComponent leaves '..' untouched,
+    //    so without this a targetPath of '../../x' escapes the intended folder.
+    const safeFileName = path.basename(asset.fileName).replace(/^\.+/, '') || 'file';
+    let cleanPath = targetPath
+        .replace(/\\+/g, '/')
+        .split('/')
+        .map(segment => segment.trim())
+        .filter(segment => segment && segment !== '.' && segment !== '..')
+        .join('/');
+    if (!cleanPath.toLowerCase().endsWith(safeFileName.toLowerCase())) {
+        cleanPath = cleanPath ? `${cleanPath}/${safeFileName}` : safeFileName;
     }
 
     // 4. Resolve / obtain active Diversion workspace ID (ref_id for file uploads MUST be a workspace ID)
@@ -362,15 +373,26 @@ export const streamAssetToDiversion = async (options: SendToDiversionOptions): P
     console.log(`[Diversion] Initiating zero-disk stream to Diversion API: ${diversionUrl}`);
 
     try {
+        // RFC 7230 forbids Content-Length alongside Transfer-Encoding; sending both
+        // gets the request rejected by proxies as smuggling. We know the exact byte
+        // count from the Asset row, so prefer Content-Length and let the stream flow
+        // without buffering. Fall back to chunked only when the size is unknown.
+        const streamHeaders: Record<string, string> = {
+            'Authorization': `Bearer ${token}`,
+            'X-DV-Client-ID': 'project-flow',
+            'Content-Type': 'application/octet-stream',
+        };
+        if (asset.fileSize) {
+            streamHeaders['Content-Length'] = asset.fileSize.toString();
+        } else {
+            streamHeaders['Transfer-Encoding'] = 'chunked';
+        }
+
         const response = await axios.post(diversionUrl, stream, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'X-DV-Client-ID': 'project-flow',
-                'Content-Type': 'application/octet-stream',
-                'Transfer-Encoding': 'chunked',
-                ...(asset.fileSize ? { 'Content-Length': asset.fileSize.toString() } : {}),
-            },
+            headers: streamHeaders,
             params,
+            // Large 3D assets stream slowly; allow a generous window but never hang forever.
+            timeout: UPLOAD_TIMEOUT_MS,
             maxBodyLength: Infinity,
             maxContentLength: Infinity,
         });

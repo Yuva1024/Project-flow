@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma';
 import { AuthRequest, requireAuth } from '../middleware/auth.middleware';
 import { uploadAssetFile, deleteFile } from '../utils/s3';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
-import multer from 'multer';
+import { createUpload, MAX_ASSET_SIZE } from '../middleware/upload.middleware';
 import { z } from 'zod';
 import {
     sendAssetToDiversion,
@@ -14,10 +14,7 @@ import {
 const router = Router({ mergeParams: true });
 router.use(requireAuth);
 
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 250 * 1024 * 1024 } // 250MB
-});
+const upload = createUpload(MAX_ASSET_SIZE);
 
 // Helper middleware to check workspace membership
 const requireWorkspaceMember = async (req: AuthRequest, res: any, next: any) => {
@@ -103,6 +100,22 @@ router.patch('/folders/:folderId', async (req: AuthRequest, res: any) => {
             const parent = await prisma.assetFolder.findUnique({ where: { id: parentId } });
             if (!parent || parent.workspaceId !== workspaceId || parent.id === folderId) {
                 return res.status(400).json({ message: 'Invalid parent folder' });
+            }
+            // Walk up from the proposed parent: if we meet this folder on the way,
+            // the move would create a cycle and any recursive walk would never end.
+            let cursor: string | null = parent.parentId;
+            const seen = new Set<string>([parent.id]);
+            while (cursor) {
+                if (cursor === folderId) {
+                    return res.status(400).json({ message: 'Cannot move a folder inside its own subtree' });
+                }
+                if (seen.has(cursor)) break;
+                seen.add(cursor);
+                const next: { parentId: string | null } | null = await prisma.assetFolder.findUnique({
+                    where: { id: cursor },
+                    select: { parentId: true },
+                });
+                cursor = next?.parentId ?? null;
             }
         }
 
@@ -217,6 +230,11 @@ router.delete('/tags/:tagId', async (req: AuthRequest, res: any) => {
 // =======================
 // ASSETS CRUD
 // =======================
+const updateAssetSchema = z.object({
+    fileName: z.string().trim().min(1).max(255).optional(),
+    folderId: z.string().uuid().nullable().optional(),
+});
+
 router.post('/', uploadLimiter, upload.single('file'), async (req: AuthRequest, res: any) => {
     try {
         const workspaceId = req.params.workspaceId as string;
@@ -340,7 +358,13 @@ router.get('/card/:cardId', async (req: AuthRequest, res: any) => {
     try {
         const workspaceId = req.params.workspaceId as string;
         const cardId = req.params.cardId as string;
-        
+
+        const card = await prisma.card.findFirst({
+            where: { id: cardId, list: { board: { workspaceId } } },
+            select: { id: true },
+        });
+        if (!card) return res.status(404).json({ message: 'Card not found in this workspace' });
+
         const cardLinks = await prisma.cardAsset.findMany({
             where: { cardId, asset: { workspaceId } },
             include: {
@@ -383,7 +407,9 @@ router.patch('/:assetId', async (req: AuthRequest, res: any) => {
     try {
         const workspaceId = req.params.workspaceId as string;
         const assetId = req.params.assetId as string;
-        const { fileName, folderId } = req.body;
+        const parsed = updateAssetSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json(parsed.error.format());
+        const { fileName, folderId } = parsed.data;
 
         const existing = await prisma.asset.findUnique({ where: { id: assetId } });
         if (!existing || existing.workspaceId !== workspaceId) return res.status(404).json({ message: 'Asset not found' });
@@ -424,17 +450,30 @@ router.delete('/:assetId', async (req: AuthRequest, res: any) => {
         // so the cards NEVER break and keep their files!
         const hasLinkedCards = existing.cardLinks && existing.cardLinks.length > 0;
         if (hasLinkedCards) {
-            for (const link of existing.cardLinks) {
-                await prisma.attachment.create({
-                    data: {
-                        cardId: link.cardId,
-                        fileName: existing.fileName,
-                        fileUrl: existing.fileUrl,
-                        fileSize: existing.fileSize,
-                        mimeType: existing.mimeType,
-                        createdAt: existing.createdAt,
-                    }
-                });
+            // Skip cards that already hold a plain attachment for these exact bytes,
+            // otherwise the card ends up showing the same file twice.
+            const alreadyAttached = await prisma.attachment.findMany({
+                where: {
+                    fileUrl: existing.fileUrl,
+                    cardId: { in: existing.cardLinks.map(link => link.cardId) },
+                },
+                select: { cardId: true },
+            });
+            const skip = new Set(alreadyAttached.map(a => a.cardId));
+
+            const toCreate = existing.cardLinks
+                .filter(link => !skip.has(link.cardId))
+                .map(link => ({
+                    cardId: link.cardId,
+                    fileName: existing.fileName,
+                    fileUrl: existing.fileUrl,
+                    fileSize: existing.fileSize,
+                    mimeType: existing.mimeType,
+                    createdAt: existing.createdAt,
+                }));
+
+            if (toCreate.length > 0) {
+                await prisma.attachment.createMany({ data: toCreate });
             }
         }
 
@@ -477,6 +516,11 @@ router.post('/:assetId/tags/:tagId', async (req: AuthRequest, res: any) => {
         if (!asset || asset.workspaceId !== workspaceId) return res.status(404).json({ message: 'Asset not found' });
         if (!tag || tag.workspaceId !== workspaceId) return res.status(404).json({ message: 'Tag not found' });
         
+        const existing = await prisma.assetTagAssignment.findUnique({
+            where: { assetId_tagId: { assetId, tagId } }
+        });
+        if (existing) return res.status(409).json({ message: 'Tag already assigned to this asset' });
+
         const assignment = await prisma.assetTagAssignment.create({
             data: { assetId, tagId }
         });
@@ -524,6 +568,11 @@ router.post('/:assetId/link/:cardId', async (req: AuthRequest, res: any) => {
         if (!card || card.list.board.workspaceId !== workspaceId) {
             return res.status(404).json({ message: 'Card not found in this workspace' });
         }
+
+        const existingLink = await prisma.cardAsset.findUnique({
+            where: { cardId_assetId: { cardId, assetId } }
+        });
+        if (existingLink) return res.status(409).json({ message: 'Asset is already linked to this card' });
 
         const link = await prisma.cardAsset.create({
             data: { assetId, cardId }

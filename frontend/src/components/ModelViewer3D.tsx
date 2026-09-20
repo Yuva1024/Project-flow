@@ -39,6 +39,8 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
     const modelViewerRef = useRef<any>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const lastUploadedCloudUrl = useRef<string | null>(null);
+    // Blob URLs stay alive (pinning the whole file in memory) until revoked.
+    const blobUrlRef = useRef<string | null>(null);
 
     // Sync initial model URL if passed from parent
     useEffect(() => {
@@ -63,6 +65,16 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
             }
         }
     }, [initialModelUrl]);
+
+    // Release the outstanding blob URL when the viewer goes away
+    useEffect(() => {
+        return () => {
+            if (blobUrlRef.current) {
+                URL.revokeObjectURL(blobUrlRef.current);
+                blobUrlRef.current = null;
+            }
+        };
+    }, []);
 
     // Bind model-viewer events (progress, load, error)
     useEffect(() => {
@@ -120,8 +132,14 @@ export default function ModelViewer3D({ initialModelUrl = "", onModelChange, onF
         setFileName(file.name);
         setFileSize(file.size);
 
-        // 1. Set local object URL IMMEDIATELY so model renders on your device with 0-second delay
+        // 1. Set local object URL IMMEDIATELY so model renders on your device with 0-second delay.
+        //    Revoke the previous one first — otherwise every model dropped in this
+        //    session stays pinned in memory for the life of the page.
+        if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+        }
         const localBlobUrl = URL.createObjectURL(file);
+        blobUrlRef.current = localBlobUrl;
         setModelSrc(localBlobUrl);
         setIsModelRevealed(true);
         setIsLoading(true);

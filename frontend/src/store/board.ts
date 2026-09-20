@@ -88,8 +88,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
     fetchWorkspaces: async () => {
         set({ isLoading: true });
-        const { data } = await api.get('/workspaces');
-        set({ workspaces: data, isLoading: false });
+        try {
+            const { data } = await api.get('/workspaces');
+            set({ workspaces: Array.isArray(data) ? data : [] });
+        } finally {
+            // Without the finally, any failure left the dashboard spinner up forever.
+            set({ isLoading: false });
+        }
     },
 
     setCurrentWorkspace: (ws) => set({ currentWorkspace: ws }),
@@ -119,7 +124,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
     fetchBoards: async (workspaceId) => {
         const { data } = await api.get(`/workspaces/${workspaceId}/boards`);
-        set({ boards: data });
+        set({ boards: Array.isArray(data) ? data : [] });
     },
 
     createBoard: async (workspaceId, title) => {
@@ -147,7 +152,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
     fetchWhiteboards: async (workspaceId) => {
         const { data } = await api.get(`/workspaces/${workspaceId}/whiteboards`);
-        set({ whiteboards: data });
+        set({ whiteboards: Array.isArray(data) ? data : [] });
     },
 
     createWhiteboard: async (workspaceId, name) => {
@@ -197,10 +202,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
         try {
             const { data } = await api.put(`/workspaces/${workspaceId}/boards/${boardId}/lists/reorder`, { orderedListIds });
-            set({ currentBoard: { ...board, lists: data } });
+            const latest = get().currentBoard;
+            if (latest?.id !== boardId) return; // user navigated away mid-flight
+            set({ currentBoard: { ...latest, lists: data } });
         } catch (err) {
             // Revert on failure
-            set({ currentBoard: { ...board, lists: oldLists } });
+            const latest = get().currentBoard;
+            if (latest?.id === boardId) set({ currentBoard: { ...latest, lists: oldLists } });
             toast.error("Failed to save list order");
             throw err;
         }
@@ -247,10 +255,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
         try {
             const { data } = await api.put(`/workspaces/${workspaceId}/boards/${boardId}/cards/reorder`, { cardId, targetListId, targetIndex });
-            set({ currentBoard: { ...board, lists: data } });
+            const latest = get().currentBoard;
+            if (latest?.id !== boardId) return; // user navigated away mid-flight
+            set({ currentBoard: { ...latest, lists: data } });
         } catch (err) {
             // Revert on failure
-            set({ currentBoard: { ...board, lists: oldLists } });
+            const latest = get().currentBoard;
+            if (latest?.id === boardId) set({ currentBoard: { ...latest, lists: oldLists } });
             toast.error("Failed to save card order");
             throw err;
         }

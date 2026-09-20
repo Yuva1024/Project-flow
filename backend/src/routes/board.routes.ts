@@ -54,8 +54,6 @@ import {
     getActivityLog,
 } from '../controllers/cardmember.controller';
 
-import multer from 'multer';
-import path from 'path';
 import {
     uploadAttachment,
     getAttachments,
@@ -64,21 +62,9 @@ import {
     linkAssetToCard,
 } from '../controllers/attachment.controller';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
+import { createUpload, MAX_ATTACHMENT_SIZE } from '../middleware/upload.middleware';
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-const BLOCKED_EXTENSIONS = ['.exe', '.msi', '.bat', '.cmd', '.sh', '.scr', '.com', '.ps1', '.vbs', '.jar'];
-
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_FILE_SIZE, files: 1 },
-    fileFilter: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (BLOCKED_EXTENSIONS.includes(ext)) {
-            return cb(new Error('File type not allowed'));
-        }
-        cb(null, true);
-    },
-});
+const upload = createUpload(MAX_ATTACHMENT_SIZE);
 
 const router = Router({ mergeParams: true });
 

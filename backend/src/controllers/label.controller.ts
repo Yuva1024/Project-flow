@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
+import { assertBoardAccess, assertCardAccess, assertLabelAccess } from '../utils/access';
 
 // --- Validation Schemas ---
 const createLabelSchema = z.object({
@@ -13,6 +14,10 @@ const createLabelSchema = z.object({
 const updateLabelSchema = z.object({
     name: z.string().min(1).max(50).optional(),
     color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+});
+
+const assignLabelSchema = z.object({
+    labelId: z.string().uuid(),
 });
 
 // --- Controllers ---
@@ -29,13 +34,8 @@ export const createLabel = async (req: AuthRequest, res: Response) => {
         const workspaceId = req.params.workspaceId as string;
         const boardId = req.params.boardId as string;
 
-        const membership = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId } },
-        });
-        if (!membership) return res.status(403).json({ message: 'Access denied' });
-
-        const board = await prisma.board.findFirst({ where: { id: boardId, workspaceId } });
-        if (!board) return res.status(404).json({ message: 'Board not found' });
+        const access = await assertBoardAccess(workspaceId, boardId, userId);
+        if (!access) return res.status(404).json({ message: 'Board not found or access denied' });
 
         const label = await prisma.label.create({
             data: { name: parsed.data.name, color: parsed.data.color, boardId },
@@ -55,10 +55,8 @@ export const getLabels = async (req: AuthRequest, res: Response) => {
         const workspaceId = req.params.workspaceId as string;
         const boardId = req.params.boardId as string;
 
-        const membership = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId } },
-        });
-        if (!membership) return res.status(403).json({ message: 'Access denied' });
+        const access = await assertBoardAccess(workspaceId, boardId, userId);
+        if (!access) return res.status(404).json({ message: 'Board not found or access denied' });
 
         const labels = await prisma.label.findMany({
             where: { boardId },
@@ -80,9 +78,13 @@ export const updateLabel = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Invalid input', errors: parsed.error.format() });
         }
 
+        const userId = req.user!.userId;
+        const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
         const labelId = req.params.labelId as string;
-        const label = await prisma.label.findUnique({ where: { id: labelId } });
-        if (!label) return res.status(404).json({ message: 'Label not found' });
+
+        const access = await assertLabelAccess(workspaceId, boardId, labelId, userId);
+        if (!access) return res.status(404).json({ message: 'Label not found or access denied' });
 
         const updated = await prisma.label.update({ where: { id: labelId }, data: parsed.data });
         res.json(updated);
@@ -95,9 +97,13 @@ export const updateLabel = async (req: AuthRequest, res: Response) => {
 /** DELETE /:boardId/labels/:labelId — Delete label */
 export const deleteLabel = async (req: AuthRequest, res: Response) => {
     try {
+        const userId = req.user!.userId;
+        const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
         const labelId = req.params.labelId as string;
-        const label = await prisma.label.findUnique({ where: { id: labelId } });
-        if (!label) return res.status(404).json({ message: 'Label not found' });
+
+        const access = await assertLabelAccess(workspaceId, boardId, labelId, userId);
+        if (!access) return res.status(404).json({ message: 'Label not found or access denied' });
 
         await prisma.label.delete({ where: { id: labelId } });
         res.json({ message: 'Label deleted' });
@@ -110,22 +116,35 @@ export const deleteLabel = async (req: AuthRequest, res: Response) => {
 /** POST /:boardId/cards/:cardId/labels — Assign label to card */
 export const assignLabel = async (req: AuthRequest, res: Response) => {
     try {
-        const cardId = req.params.cardId as string;
-        const { labelId } = req.body;
+        const parsed = assignLabelSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ message: 'labelId is required' });
+        }
 
-        if (!labelId) return res.status(400).json({ message: 'labelId is required' });
+        const userId = req.user!.userId;
+        const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
+        const cardId = req.params.cardId as string;
+        const { labelId } = parsed.data;
+
+        const cardAccess = await assertCardAccess(workspaceId, boardId, cardId, userId);
+        if (!cardAccess) return res.status(404).json({ message: 'Card not found or access denied' });
+
+        // The label must live on the same board as the card — otherwise a label
+        // from another board (or another workspace) could be stuck onto this card.
+        const labelAccess = await assertLabelAccess(workspaceId, boardId, labelId, userId);
+        if (!labelAccess) return res.status(404).json({ message: 'Label not found on this board' });
 
         const existing = await prisma.cardLabel.findUnique({
             where: { cardId_labelId: { cardId, labelId } },
         });
-        if (existing) return res.status(400).json({ message: 'Label already assigned' });
+        if (existing) return res.status(409).json({ message: 'Label already assigned' });
 
         const cardLabel = await prisma.cardLabel.create({
             data: { cardId, labelId },
             include: { label: true },
         });
 
-        const userId = req.user!.userId;
         await logActivity(cardId, userId, 'assigned label', cardLabel.label.name);
 
         res.status(201).json(cardLabel);
@@ -138,17 +157,28 @@ export const assignLabel = async (req: AuthRequest, res: Response) => {
 /** DELETE /:boardId/cards/:cardId/labels/:labelId — Remove label from card */
 export const removeLabel = async (req: AuthRequest, res: Response) => {
     try {
+        const userId = req.user!.userId;
+        const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
         const cardId = req.params.cardId as string;
         const labelId = req.params.labelId as string;
 
-        const label = await prisma.label.findUnique({ where: { id: labelId } });
+        const cardAccess = await assertCardAccess(workspaceId, boardId, cardId, userId);
+        if (!cardAccess) return res.status(404).json({ message: 'Card not found or access denied' });
+
+        const labelAccess = await assertLabelAccess(workspaceId, boardId, labelId, userId);
+        if (!labelAccess) return res.status(404).json({ message: 'Label not found on this board' });
+
+        const existing = await prisma.cardLabel.findUnique({
+            where: { cardId_labelId: { cardId, labelId } },
+        });
+        if (!existing) return res.status(404).json({ message: 'Label is not assigned to this card' });
 
         await prisma.cardLabel.delete({
             where: { cardId_labelId: { cardId, labelId } },
         });
 
-        const userId = req.user!.userId;
-        await logActivity(cardId, userId, 'removed label', label?.name);
+        await logActivity(cardId, userId, 'removed label', labelAccess.label.name);
 
         res.json({ message: 'Label removed from card' });
     } catch (error) {

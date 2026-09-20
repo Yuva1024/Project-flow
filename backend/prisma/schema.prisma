@@ -41,6 +41,8 @@ model Workspace {
   assetFolders AssetFolder[]
   assets       Asset[]
   assetTags    AssetTag[]
+
+  @@index([ownerId])
 }
 
 enum Role {
@@ -57,6 +59,7 @@ model WorkspaceMember {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([workspaceId, userId])
+  @@index([userId])
 }
 
 enum Visibility {
@@ -74,6 +77,8 @@ model Board {
   workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lists       List[]
   labels      Label[]
+
+  @@index([workspaceId])
 }
 
 model List {
@@ -85,29 +90,34 @@ model List {
   updatedAt DateTime @updatedAt
   board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
   cards     Card[]
+
+  @@index([boardId])
 }
 
 model Card {
-  id               String       @id @default(uuid())
-  listId           String
-  title            String
-  description      String?
-  priority         String?
-  dueDate          DateTime?
-  position         Float
-  createdBy        String
-  model3DSections  Json?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  list             List         @relation(fields: [listId], references: [id], onDelete: Cascade)
-  creator          User         @relation("CardCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  comments         Comment[]
-  labels           CardLabel[]
-  members          CardMember[]
-  checklists       Checklist[]
-  attachments      Attachment[]
-  activities       ActivityLog[]
-  linkedAssets     CardAsset[]
+  id              String        @id @default(uuid())
+  listId          String
+  title           String
+  description     String?
+  priority        String?
+  dueDate         DateTime?
+  position        Float
+  createdBy       String
+  model3DSections Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  list            List          @relation(fields: [listId], references: [id], onDelete: Cascade)
+  creator         User          @relation("CardCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  comments        Comment[]
+  labels          CardLabel[]
+  members         CardMember[]
+  checklists      Checklist[]
+  attachments     Attachment[]
+  activities      ActivityLog[]
+  linkedAssets    CardAsset[]
+
+  @@index([listId, position])
+  @@index([createdBy])
 }
 
 model Comment {
@@ -119,6 +129,9 @@ model Comment {
   updatedAt DateTime @updatedAt
   card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+  @@index([userId])
 }
 
 model Label {
@@ -128,24 +141,28 @@ model Label {
   color   String
   board   Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
   cards   CardLabel[]
+
+  @@index([boardId])
 }
 
 model CardLabel {
   cardId  String
   labelId String
-  card    Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  label   Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  card    Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@id([cardId, labelId])
+  @@index([labelId])
 }
 
 model CardMember {
   cardId String
   userId String
-  card   Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card   Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([cardId, userId])
+  @@index([userId])
 }
 
 model Checklist {
@@ -154,6 +171,8 @@ model Checklist {
   title  String
   card   Card            @relation(fields: [cardId], references: [id], onDelete: Cascade)
   items  ChecklistItem[]
+
+  @@index([cardId])
 }
 
 model ChecklistItem {
@@ -162,6 +181,8 @@ model ChecklistItem {
   content     String
   isChecked   Boolean   @default(false)
   checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([checklistId])
 }
 
 model Attachment {
@@ -173,6 +194,9 @@ model Attachment {
   mimeType  String
   createdAt DateTime @default(now())
   card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId])
+  @@index([fileUrl])
 }
 
 model ActivityLog {
@@ -186,6 +210,11 @@ model ActivityLog {
   card      Card?    @relation(fields: [cardId], references: [id], onDelete: Cascade)
   asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+  @@index([assetId, createdAt])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Notification {
@@ -197,6 +226,9 @@ model Notification {
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }
 
 model Whiteboard {
@@ -207,6 +239,8 @@ model Whiteboard {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, updatedAt])
 }
 
 model AssetFolder {
@@ -219,6 +253,9 @@ model AssetFolder {
   parent      AssetFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    AssetFolder[] @relation("FolderTree")
   assets      Asset[]
+
+  @@index([workspaceId])
+  @@index([parentId])
 }
 
 model Asset {
@@ -229,15 +266,20 @@ model Asset {
   fileUrl      String
   fileSize     Int
   mimeType     String
-  uploadedById String
+  uploadedById String?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   folder       AssetFolder?         @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   tags         AssetTagAssignment[]
   cardLinks    CardAsset[]
   activityLogs ActivityLog[]
+
+  @@index([workspaceId, createdAt])
+  @@index([folderId])
+  @@index([fileUrl])
+  @@index([uploadedById])
 }
 
 model AssetTag {
@@ -249,6 +291,7 @@ model AssetTag {
   assignments AssetTagAssignment[]
 
   @@unique([workspaceId, name])
+  @@index([workspaceId])
 }
 
 model AssetTagAssignment {
@@ -259,6 +302,8 @@ model AssetTagAssignment {
   tag     AssetTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([assetId, tagId])
+  @@index([assetId])
+  @@index([tagId])
 }
 
 model CardAsset {
@@ -269,4 +314,6 @@ model CardAsset {
   asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@unique([cardId, assetId])
+  @@index([assetId])
+  @@index([cardId])
 }

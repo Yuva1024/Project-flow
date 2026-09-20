@@ -53,22 +53,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     loadUser: async () => {
         const token = localStorage.getItem('token');
-        if (token) {
-            try {
-                const { data } = await api.get('/auth/me');
-                if (data && data.unauthorized) {
-                    localStorage.removeItem('token');
-                    set({ user: null, token: null, isLoading: false });
-                } else {
-                    set({ user: data.user, token, isLoading: false });
-                }
-            } catch (err) {
-                console.error('loadUser error:', err);
-                localStorage.removeItem('token');
-                set({ user: null, token: null, isLoading: false });
-            }
-        } else {
+        if (!token) {
             set({ isLoading: false });
+            return;
+        }
+
+        try {
+            const { data } = await api.get('/auth/me');
+            set({ user: data.user, token, isLoading: false });
+        } catch (err) {
+            // A 401/404 here already cleared the token and redirected in the
+            // response interceptor; just make sure we don't stay "loading".
+            console.error('loadUser error:', err);
+            localStorage.removeItem('token');
+            set({ user: null, token: null, isLoading: false });
         }
     },
 

@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { Prisma } from '@prisma/client';
-import { deleteFiles } from '../utils/s3';
+import { collectWorkspaceFileUrls, deleteUnreferencedFiles } from '../utils/storage.helper';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { createNotification } from '../utils/notification.helper';
 
@@ -202,6 +202,13 @@ export const updateMemberRole = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Cannot demote workspace owner' });
         }
 
+        const target = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: memberId } },
+        });
+        if (!target) {
+            return res.status(404).json({ message: 'User is not a member of this workspace' });
+        }
+
         const updated = await prisma.workspaceMember.update({
             where: { workspaceId_userId: { workspaceId, userId: memberId } },
             data: { role },
@@ -244,6 +251,13 @@ export const removeMember = async (req: AuthRequest, res: Response) => {
             if (!requesterMembership || requesterMembership.role !== 'ADMIN') {
                 return res.status(403).json({ message: 'Only admins can remove members' });
             }
+        }
+
+        const target = await prisma.workspaceMember.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: memberId } },
+        });
+        if (!target) {
+            return res.status(404).json({ message: 'User is not a member of this workspace' });
         }
 
         await prisma.workspaceMember.delete({
@@ -293,63 +307,6 @@ export const updateWorkspace = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * GET /api/workspaces/:id/assets
- * Lists every attachment in the workspace with enough context to locate its card.
- */
-export const getWorkspaceAssets = async (req: AuthRequest, res: Response) => {
-    try {
-        const userId = req.user!.userId;
-        const id = req.params.id as string;
-
-        const membership = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId: id, userId } },
-        });
-        if (!membership) {
-            return res.status(403).json({ message: 'Not a member of this workspace' });
-        }
-
-        const assets = await prisma.attachment.findMany({
-            where: { card: { list: { board: { workspaceId: id } } } },
-            orderBy: { createdAt: 'desc' },
-            include: {
-                card: {
-                    select: {
-                        id: true,
-                        title: true,
-                        list: {
-                            select: {
-                                id: true,
-                                title: true,
-                                board: { select: { id: true, title: true } },
-                            },
-                        },
-                    },
-                },
-            },
-        });
-
-        res.json(assets.map(a => ({
-            id: a.id,
-            fileName: a.fileName,
-            fileUrl: a.fileUrl,
-            fileSize: a.fileSize,
-            mimeType: a.mimeType,
-            createdAt: a.createdAt,
-            card: {
-                id: a.card.id,
-                title: a.card.title,
-                listTitle: a.card.list.title,
-                boardId: a.card.list.board.id,
-                boardTitle: a.card.list.board.title,
-            },
-        })));
-    } catch (error) {
-        console.error('Get workspace assets error:', error);
-        res.status(500).json({ message: 'Internal Server Error' });
-    }
-};
-
 export const deleteWorkspace = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;
@@ -364,36 +321,16 @@ export const deleteWorkspace = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ message: 'Only the workspace owner can delete it' });
         }
 
-        const workspace = await prisma.workspace.findUnique({
-            where: { id },
-            select: {
-                boards: {
-                    select: {
-                        lists: {
-                            select: {
-                                cards: {
-                                    select: { attachments: { select: { fileUrl: true } } }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        // Delete all attachments from Cloudflare R2
-        const fileUrls = (workspace?.boards ?? []).flatMap(board =>
-            board.lists.flatMap(list =>
-                list.cards.flatMap(card => card.attachments.map(att => att.fileUrl))
-            )
-        );
-        if (fileUrls.length > 0) {
-            await deleteFiles(fileUrls);
-        }
+        // Card attachments AND library assets — the old version only collected
+        // attachments, so every Asset file was orphaned in R2 forever.
+        const fileUrls = await collectWorkspaceFileUrls(id);
 
         await prisma.workspace.delete({
             where: { id },
         });
+
+        // Only after the rows are gone can we tell which files nothing else shares.
+        await deleteUnreferencedFiles(fileUrls);
 
         res.json({ message: 'Workspace deleted successfully' });
     } catch (error) {
