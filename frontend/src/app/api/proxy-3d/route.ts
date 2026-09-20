@@ -14,7 +14,15 @@ export async function GET(request: Request) {
     }
 
     try {
-        const response = await fetch(fileUrl);
+        // `redirect: 'manual'` matters: isAllowedFileUrl only vets the URL we were
+        // given. With the default redirect handling, a 3xx from the storage host
+        // would be followed to wherever it points — including internal addresses
+        // and cloud metadata endpoints — re-opening the SSRF hole the guard closes.
+        const response = await fetch(fileUrl, { redirect: 'manual' });
+
+        if (response.status >= 300 && response.status < 400) {
+            return new NextResponse('Redirects are not followed', { status: 502 });
+        }
 
         if (!response.ok) {
             return new NextResponse('Failed to fetch model from storage', { status: response.status });

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
+import ModelViewerLoader from "@/components/ModelViewerLoader";
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"] });
 
@@ -48,9 +49,9 @@ export default function RootLayout({
             `,
           }}
         />
-        <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
       </head>
       <body className={plusJakarta.className}>
+        <ModelViewerLoader />
         {children}
         <Toaster
           position="bottom-right"

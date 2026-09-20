@@ -213,10 +213,14 @@ model ActivityLog {
 ### 5.1 Workspaces & Role-Based Access Control (RBAC)
 - **Multi-Tenancy**: Every resource is isolated by `workspaceId`.
 - **Authorization Guard**: All API requests pass through `requireAuth` and verify workspace membership before executing any query.
-- **Roles**:
-  - `OWNER`: Full administrative control, billing, workspace deletion, role promotion.
-  - `ADMIN`: Board creation, member invitations, asset taxonomy management (folders/tags).
-  - `MEMBER`: Create and edit cards, upload attachments, edit whiteboards, manage own comments.
+- **Roles**: the `Role` enum has two values; ownership is a separate concept held
+  on `Workspace.ownerId` rather than a third role.
+  - **Owner** (`Workspace.ownerId`): the creator. Exclusively able to rename or delete
+    the workspace, and cannot be demoted or removed by anyone. Also seeded as an `ADMIN` member.
+  - `ADMIN`: Board deletion, member invitations, role changes, removing members,
+    deleting other people's comments, asset taxonomy management (folders/tags).
+  - `MEMBER`: Create and edit boards, lists and cards, upload attachments, edit
+    whiteboards, manage own comments.
 
 ---
 
@@ -447,6 +451,10 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
 
 1. **Content-Addressable Storage (CAS)**:
    - Eliminates redundant R2 uploads by verifying SHA-256 hashes with `HeadObjectCommand` before streaming bytes over the wire.
+   - Because one object under `files/<sha256>.<ext>` is shared by every row with
+     identical bytes, deletion is **reference-counted**: `deleteUnreferencedFiles()`
+     in `utils/storage.helper.ts` runs *after* the owning rows are removed and only
+     purges hashes that no surviving `Attachment` or `Asset` still points at.
 2. **Zero-Disk VCS Streaming**:
    - Binary streams are forwarded directly from S3 to destination APIs without touching local filesystem or creating memory spikes.
 3. **3D Parser Crash Prevention**:
@@ -457,10 +465,22 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
    - Resolves cross-origin WebGL texture and buffer restrictions by proxying 3D assets securely through Next.js edge routes.
 6. **Dynamic Lazy-Loading**:
    - Three.js WebGL dependencies and Google `<model-viewer>` are loaded dynamically (`next/dynamic` with `ssr: false`) to keep initial bundle size minimal.
-7. **Security Defenses**:
+7. **Database Indexing**:
+   - Postgres does not index foreign keys automatically, so every relation used in a
+     `where` clause carries an explicit `@@index` (see `schema.prisma`). This covers
+     board/list/card traversal, per-user notification queries, activity lookups, and
+     the `fileUrl` columns that CAS reference counting scans on every delete.
+8. **Security Defenses**:
    - Rate limiting on sensitive endpoints (auth, file uploads, global API).
    - Helmet HTTP headers and Parameter Pollution (HPP) defenses.
    - Strict Zod validation on request payloads.
+   - Shared authorization helpers in `utils/access.ts`. Every board-scoped route is
+     nested under a caller-supplied `:workspaceId`/`:boardId`, so handlers must
+     re-verify that the nested record actually belongs to a workspace the requester
+     is a member of — looking a record up by its own id alone is what lets one
+     tenant reach another's data.
+   - Uploads share one extension blocklist and one filter (`middleware/upload.middleware.ts`)
+     across card attachments, the asset library, and whiteboard images.
 
 ---
 
@@ -518,12 +538,30 @@ cd ../frontend
 npm run dev
 ```
 
+> **One-time step for the existing production database.** The schema was previously
+> managed without a migration history, so `prisma/migrations/` was added after the
+> fact: `20260920000000_init` describes the schema as it already exists in
+> production, and `20260920000001_...` adds the missing indexes. Running
+> `prisma migrate deploy` against a database that already has those tables would
+> fail on `CREATE TABLE`. Mark the baseline as already applied once, then deploy
+> normally from then on:
+>
+> ```bash
+> cd backend
+> npx prisma migrate resolve --applied 20260920000000_init
+> npx prisma migrate deploy
+> ```
+>
+> A brand-new database needs none of this — `prisma migrate deploy` (or
+> `prisma migrate dev` locally) applies both migrations in order.
+
 ### Production Deployment
 
 - **Backend (Render / Railway / AWS ECS)**:
-  - Build Command: `npm install && npm run build`
+  - Build Command: `npm install && npx prisma generate && npx prisma migrate deploy && npm run build`
   - Start Command: `npm start` (Runs `node dist/index.js`)
   - Ensure `DATABASE_URL`, `JWT_SECRET`, and `CLOUDFLARE_R2_*` environment variables are configured.
+  - See the baselining note above before the first deploy against an existing database.
 - **Frontend (Netlify / Vercel)**:
   - Build Command: `npm run build`
   - Output Directory: `.next`

@@ -153,14 +153,23 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     };
 
     useEffect(() => {
-        api.get(`${cardBase}/comments`).then(r => setComments(r.data)).catch(() => { });
-        api.get(`${cardBase}/checklists`).then(r => setChecklists(r.data)).catch(() => { });
-        api.get(`${cardBase}/members`).then(r => setMembers(r.data)).catch(() => { });
-        api.get(`${cardBase}/activity`).then(r => setActivity(r.data)).catch(() => { });
-        api.get(`${cardBase}/attachments`).then(r => setAttachments(r.data)).catch(() => { });
-        api.get(`${base}/labels`).then(r => setBoardLabels(r.data)).catch(() => { });
-        api.get(`/workspaces/${wId}`).then(r => setWorkspaceMembers(r.data.members || [])).catch(() => { });
+        // These seven run in parallel with no ordering guarantee. Without the
+        // guard, opening card A then quickly switching to card B could land A's
+        // slower responses last and populate B's modal with A's data.
+        let stale = false;
+        const apply = <T,>(setter: (value: T) => void, fallback: T) =>
+            (r: { data: T }) => { if (!stale) setter(r.data ?? fallback); };
+
+        api.get(`${cardBase}/comments`).then(apply(setComments, [])).catch(() => { });
+        api.get(`${cardBase}/checklists`).then(apply(setChecklists, [])).catch(() => { });
+        api.get(`${cardBase}/members`).then(apply(setMembers, [])).catch(() => { });
+        api.get(`${cardBase}/activity`).then(apply(setActivity, [])).catch(() => { });
+        api.get(`${cardBase}/attachments`).then(apply(setAttachments, [])).catch(() => { });
+        api.get(`${base}/labels`).then(apply(setBoardLabels, [])).catch(() => { });
+        api.get(`/workspaces/${wId}`).then(r => { if (!stale) setWorkspaceMembers(r.data?.members || []); }).catch(() => { });
         setLabels(card.labels || []);
+
+        return () => { stale = true; };
     }, [card.id]);
 
     // Lightbox & Direct Download state

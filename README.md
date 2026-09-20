@@ -33,7 +33,7 @@ For the complete architectural breakdown, database models, storage deduplication
   - Pushes gigabyte-scale 3D game assets directly to remote repositories without writing temporary binary files to server disk or overloading RAM.
   - Automated remote workspace resolution, branch commit creation, and credential handling.
 - 📜 **Polymorphic ActivityLog Audit Trail**: Unified audit trail associating activities with either Kanban cards or digital assets.
-- 🔐 **Multi-Tenant Workspaces & RBAC**: Granular role-based permissions (`OWNER`, `ADMIN`, `MEMBER`), team invites, and member management.
+- 🔐 **Multi-Tenant Workspaces & RBAC**: Workspace ownership plus `ADMIN` / `MEMBER` roles, team invites, and member management.
 
 ---
 
@@ -70,5 +70,22 @@ npm run dev
 # In frontend
 npm run dev
 ```
+
+> **One-time step for the existing production database.** The schema was previously
+> managed without a migration history, so `prisma/migrations/` was added after the
+> fact: `20260920000000_init` describes the schema as it already exists in
+> production, and `20260920000001_...` adds the missing indexes. Running
+> `prisma migrate deploy` against a database that already has those tables would
+> fail on `CREATE TABLE`. Mark the baseline as already applied once, then deploy
+> normally from then on:
+>
+> ```bash
+> cd backend
+> npx prisma migrate resolve --applied 20260920000000_init
+> npx prisma migrate deploy
+> ```
+>
+> A brand-new database needs none of this — `prisma migrate deploy` (or
+> `prisma migrate dev` locally) applies both migrations in order.
 
 Visit `http://localhost:3000` to access the application.

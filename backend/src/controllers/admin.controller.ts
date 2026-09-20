@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../utils/prisma';
-import { deleteFiles } from '../utils/s3';
+import { collectBoardFileUrls, deleteUnreferencedFiles } from '../utils/storage.helper';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // Admin middleware - checks isAdmin flag
@@ -86,59 +86,31 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Cannot delete your own admin account' });
         }
 
-        const userWithData = await prisma.user.findUnique({ 
+        const userWithData = await prisma.user.findUnique({
             where: { id: targetUserId },
-            include: {
-                workspacesOwned: {
-                    include: {
-                        boards: {
-                            include: {
-                                lists: {
-                                    include: {
-                                        cards: {
-                                            include: { attachments: true }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                cardsCreated: {
-                    include: { attachments: true }
-                }
-            }
+            select: {
+                name: true,
+                workspacesOwned: { select: { id: true, boards: { select: { id: true } } } },
+                cardsCreated: { select: { attachments: { select: { fileUrl: true } } } },
+            },
         });
-        
+
         if (!userWithData) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Collect all attachment URLs to delete from R2
-        const fileUrls = new Set<string>();
-        
-        // From owned workspaces
-        userWithData.workspacesOwned.forEach(ws => {
-            ws.boards.forEach(board => {
-                board.lists.forEach(list => {
-                    list.cards.forEach(card => {
-                        card.attachments.forEach(att => fileUrls.add(att.fileUrl));
-                    });
-                });
-            });
-        });
-
-        // From created cards
-        userWithData.cardsCreated.forEach(card => {
-            card.attachments.forEach(att => fileUrls.add(att.fileUrl));
-        });
-
-        const fileUrlsArray = Array.from(fileUrls);
-        if (fileUrlsArray.length > 0) {
-            await deleteFiles(fileUrlsArray);
-        }
+        // Everything reachable from the workspaces this user owns (cascade-deleted
+        // with them), plus attachments on cards they authored elsewhere.
+        const ownedBoardIds = userWithData.workspacesOwned.flatMap(ws => ws.boards.map(b => b.id));
+        const fileUrls = [
+            ...(await collectBoardFileUrls(ownedBoardIds)),
+            ...userWithData.cardsCreated.flatMap(card => card.attachments.map(att => att.fileUrl)),
+        ];
 
         await prisma.user.delete({ where: { id: targetUserId } });
+
+        // Only after the rows are gone can we tell which files nothing else shares.
+        await deleteUnreferencedFiles(fileUrls);
 
         res.json({ message: `User "${userWithData.name}" deleted successfully` });
     } catch (error) {

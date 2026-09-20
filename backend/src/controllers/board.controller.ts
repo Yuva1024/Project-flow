@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { deleteFiles } from '../utils/s3';
+import { deleteUnreferencedFiles } from '../utils/storage.helper';
 import { AuthRequest } from '../middleware/auth.middleware';
 
 // --- Validation Schemas ---
@@ -196,15 +196,14 @@ export const deleteBoard = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Board not found' });
         }
 
-        // Delete attachments from Cloudflare R2
-        const fileUrls = board.lists.flatMap(list => 
+        const fileUrls = board.lists.flatMap(list =>
             list.cards.flatMap(card => card.attachments.map(att => att.fileUrl))
         );
-        if (fileUrls.length > 0) {
-            await deleteFiles(fileUrls);
-        }
 
         await prisma.board.delete({ where: { id: boardId } });
+
+        // Only after the rows are gone can we tell which files nothing else shares.
+        await deleteUnreferencedFiles(fileUrls);
 
         res.json({ message: 'Board deleted successfully' });
     } catch (error) {

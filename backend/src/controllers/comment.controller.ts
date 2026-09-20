@@ -4,6 +4,7 @@ import { prisma } from '../utils/prisma';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
 import { createNotifications } from '../utils/notification.helper';
+import { assertCardAccess } from '../utils/access';
 
 // --- Validation Schemas ---
 const createCommentSchema = z.object({
@@ -131,9 +132,19 @@ export const updateComment = async (req: AuthRequest, res: Response) => {
         }
 
         const userId = req.user!.userId;
+        const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
+        const cardId = req.params.cardId as string;
         const commentId = req.params.commentId as string;
 
-        const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+        const access = await assertCardAccess(workspaceId, boardId, cardId, userId);
+        if (!access) {
+            return res.status(404).json({ message: 'Card not found or access denied' });
+        }
+
+        // Scope the lookup to the card in the URL — finding it by id alone would
+        // let a member of any workspace reach a comment in someone else's.
+        const comment = await prisma.comment.findFirst({ where: { id: commentId, cardId } });
         if (!comment) {
             return res.status(404).json({ message: 'Comment not found' });
         }
@@ -165,21 +176,26 @@ export const deleteComment = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;
         const workspaceId = req.params.workspaceId as string;
+        const boardId = req.params.boardId as string;
+        const cardId = req.params.cardId as string;
         const commentId = req.params.commentId as string;
 
-        const comment = await prisma.comment.findUnique({ where: { id: commentId } });
+        // Establish access to the card FIRST. Previously the admin check ran against
+        // whatever :workspaceId the caller supplied, so anyone could pass a workspace
+        // they own and delete any comment in the system.
+        const access = await assertCardAccess(workspaceId, boardId, cardId, userId);
+        if (!access) {
+            return res.status(404).json({ message: 'Card not found or access denied' });
+        }
+
+        const comment = await prisma.comment.findFirst({ where: { id: commentId, cardId } });
         if (!comment) {
             return res.status(404).json({ message: 'Comment not found' });
         }
 
-        // Allow deletion by author or workspace admin
-        if (comment.userId !== userId) {
-            const membership = await prisma.workspaceMember.findUnique({
-                where: { workspaceId_userId: { workspaceId, userId } },
-            });
-            if (!membership || membership.role !== 'ADMIN') {
-                return res.status(403).json({ message: 'Only the author or an admin can delete comments' });
-            }
+        // Allow deletion by author or an admin of the card's own workspace
+        if (comment.userId !== userId && access.membership.role !== 'ADMIN') {
+            return res.status(403).json({ message: 'Only the author or an admin can delete comments' });
         }
 
         await prisma.comment.delete({ where: { id: commentId } });

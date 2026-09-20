@@ -28,8 +28,13 @@ api.interceptors.response.use(
                     window.location.href = '/login';
                 }
             }
-            return Promise.resolve({ data: { unauthorized: true } });
         }
+
+        // Always reject. Resolving with a sentinel object here used to hand every
+        // caller `{ unauthorized: true }` as if the request had succeeded — so
+        // `const { data } = await api.get(...)` would assign that object where a
+        // list was expected and the next `.map()` threw, instead of the caller's
+        // catch block running.
         return Promise.reject(error);
     }
 );

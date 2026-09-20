@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
-import { deleteFiles } from '../utils/s3';
+import { deleteUnreferencedFiles } from '../utils/storage.helper';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity } from '../utils/activity.helper';
 
@@ -275,13 +275,12 @@ export const deleteCard = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Card not found' });
         }
 
-        // Delete attachments from Cloudflare R2
-        if (card.attachments && card.attachments.length > 0) {
-            const fileUrls = card.attachments.map(att => att.fileUrl);
-            await deleteFiles(fileUrls);
-        }
+        const fileUrls = card.attachments.map(att => att.fileUrl);
 
         await prisma.card.delete({ where: { id: cardId } });
+
+        // Only after the rows are gone can we tell which files nothing else shares.
+        await deleteUnreferencedFiles(fileUrls);
 
         res.json({ message: 'Card deleted successfully' });
     } catch (error) {

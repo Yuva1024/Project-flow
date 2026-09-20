@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeObject3D, disposeRenderer } from "@/lib/threeCleanup";
 import { Box, UploadCloud, RefreshCw, Sparkles, AlertCircle, Eye, EyeOff, Maximize2, RotateCcw, ArrowDownToLine, Layers } from "lucide-react";
 
 interface Attachment3D {
@@ -42,6 +43,8 @@ export default function Three3DViewer({
     const loadedModelRef = useRef<THREE.Object3D | null>(null);
     const animFrameRef = useRef<number | null>(null);
     const gridHelperRef = useRef<THREE.GridHelper | null>(null);
+    // Blob URLs stay alive (pinning the whole file in memory) until revoked.
+    const blobUrlRef = useRef<string | null>(null);
 
     // Component states
     const [modelUrl, setModelUrl] = useState<string>(initialModelUrl);
@@ -170,7 +173,28 @@ export default function Three3DViewer({
         return () => {
             window.removeEventListener("resize", handleResize);
             if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-            renderer.dispose();
+
+            if (loadedModelRef.current) {
+                scene.remove(loadedModelRef.current);
+                disposeObject3D(loadedModelRef.current);
+                loadedModelRef.current = null;
+            }
+            disposeObject3D(scene);
+            scene.clear();
+
+            controls.dispose();
+            disposeRenderer(renderer);
+
+            sceneRef.current = null;
+            cameraRef.current = null;
+            rendererRef.current = null;
+            controlsRef.current = null;
+            gridHelperRef.current = null;
+
+            if (blobUrlRef.current) {
+                URL.revokeObjectURL(blobUrlRef.current);
+                blobUrlRef.current = null;
+            }
         };
     }, []);
 
@@ -208,12 +232,17 @@ export default function Three3DViewer({
     useEffect(() => {
         if (!modelUrl || !sceneRef.current) return;
 
+        // A load already in flight must not attach its model after a newer one.
+        let cancelled = false;
+
         setIsLoading(true);
         setLoadError(null);
 
-        // Remove previous model if exists
+        // Remove the previous model AND release its GPU buffers — scene.remove()
+        // alone leaves geometries, materials and textures resident on the GPU.
         if (loadedModelRef.current) {
             sceneRef.current.remove(loadedModelRef.current);
+            disposeObject3D(loadedModelRef.current);
             loadedModelRef.current = null;
         }
 
@@ -229,6 +258,13 @@ export default function Three3DViewer({
             (gltf) => {
                 const model = gltf.scene;
 
+                // Superseded by a newer load (or unmounted) — drop it on the floor
+                // rather than attaching a model nobody asked for and leaking it.
+                if (cancelled || !sceneRef.current) {
+                    disposeObject3D(model);
+                    return;
+                }
+
                 // Enable shadows on meshes
                 model.traverse((child) => {
                     if ((child as THREE.Mesh).isMesh) {
@@ -237,7 +273,7 @@ export default function Three3DViewer({
                     }
                 });
 
-                sceneRef.current?.add(model);
+                sceneRef.current.add(model);
                 loadedModelRef.current = model;
 
                 // Fit camera close & tight to visible mesh geometry
@@ -245,15 +281,18 @@ export default function Three3DViewer({
 
                 setIsLoading(false);
             },
-            (progressEvent) => {
-                // Progress tracking
-            },
+            undefined,
             (error) => {
+                if (cancelled) return;
                 console.error("Three.js GLTFLoader error:", error);
                 setIsLoading(false);
                 setLoadError("Unable to load 3D model. Check network or file format.");
             }
         );
+
+        return () => {
+            cancelled = true;
+        };
     }, [modelUrl]);
 
     // Handle File Process (Upload to R2/server)
@@ -272,8 +311,13 @@ export default function Three3DViewer({
         setFileName(file.name);
         setFileSize(file.size);
 
-        // Immediate local blob preview
+        // Immediate local blob preview. Revoke the previous one first — otherwise
+        // every dropped model stays pinned in memory for the life of the page.
+        if (blobUrlRef.current) {
+            URL.revokeObjectURL(blobUrlRef.current);
+        }
         const localBlobUrl = URL.createObjectURL(file);
+        blobUrlRef.current = localBlobUrl;
         setModelUrl(localBlobUrl);
 
         // Background server upload
