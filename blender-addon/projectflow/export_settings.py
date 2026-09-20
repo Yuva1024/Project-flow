@@ -63,6 +63,10 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "add_leaf_bones": False,
             "primary_bone_axis": "Y",
             "secondary_bone_axis": "X",
+            "use_armature_deform_only": True,
+            "object_types": ["MESH", "ARMATURE", "EMPTY", "OTHER"],
+            "export_colors": True,
+            "colors_type": "SRGB",
             "export_animations": True,
             "embed_textures": True,
             "export_materials": True,
@@ -82,6 +86,10 @@ BUILTIN_PRESETS: Dict[str, Dict[str, Any]] = {
             "export_animations": True,
             "export_materials": True,
             "gltf_yup": True,
+            "gltf_export_cameras": False,
+            "gltf_export_lights": False,
+            # Unreal's glTF import does not read Draco.
+            "gltf_draco": False,
             "also_attach_preview": False,
         },
     },
@@ -260,7 +268,45 @@ class ProjectFlowExportSettings(PropertyGroup):
         default=True,
     )
 
-    # -- FBX specific --------------------------------------------------
+    # -- Include ---------------------------------------------------------
+
+    use_visible: BoolProperty(
+        name="Visible Objects Only",
+        description="Skip objects hidden in the viewport",
+        default=False,
+    )
+
+    use_active_collection: BoolProperty(
+        name="Active Collection Only",
+        description="Export only objects in the active collection",
+        default=False,
+    )
+
+    # ENUM_FLAG makes this a multi-select, matching Blender's own exporter.
+    # Lights and cameras are off by default: a game asset rarely wants them, and
+    # Unreal imports stray lights as actors you then have to delete.
+    object_types: EnumProperty(
+        name="Object Types",
+        description="Which object types to include",
+        items=[
+            ("EMPTY", "Empty", "Empties, including collection instances"),
+            ("CAMERA", "Camera", ""),
+            ("LIGHT", "Light", ""),
+            ("ARMATURE", "Armature", "Required for skeletal meshes"),
+            ("MESH", "Mesh", ""),
+            ("OTHER", "Other", "Curves, surfaces and metaballs, converted to mesh"),
+        ],
+        options={"ENUM_FLAG"},
+        default={"MESH", "ARMATURE", "EMPTY", "OTHER"},
+    )
+
+    use_custom_props: BoolProperty(
+        name="Custom Properties",
+        description="Export custom properties. Unreal reads these as asset metadata",
+        default=False,
+    )
+
+    # -- Transform -------------------------------------------------------
 
     axis_forward: EnumProperty(
         name="Forward Axis",
@@ -282,23 +328,27 @@ class ProjectFlowExportSettings(PropertyGroup):
         default="Y",
     )
 
-    mesh_smooth_type: EnumProperty(
-        name="Smoothing",
-        description=(
-            "Smoothing data to write. Unreal warns on every import when this is "
-            "Off and falls back to flat shading"
-        ),
-        items=[
-            ("OFF", "Normals Only", "No smoothing groups — Unreal will warn"),
-            ("FACE", "Face", "Face smoothing groups. The usual choice for Unreal"),
-            ("EDGE", "Edge", "Edge smoothing groups"),
-        ],
-        default="FACE",
-    )
-
     apply_unit_scale: BoolProperty(
         name="Apply Unit Scale",
         description="Take Blender's unit settings into account",
+        default=True,
+    )
+
+    apply_scale_options: EnumProperty(
+        name="Apply Scalings",
+        description="How to apply custom and unit scaling",
+        items=[
+            ("FBX_SCALE_NONE", "All Local", "Apply custom scaling and unit scaling to each object"),
+            ("FBX_SCALE_UNITS", "FBX Units Scale", "Apply custom scaling to each object, units via the FBX scale"),
+            ("FBX_SCALE_CUSTOM", "FBX Custom Scale", "Apply unit scaling to each object, custom via the FBX scale"),
+            ("FBX_SCALE_ALL", "FBX All", "Apply both scalings via the FBX scale"),
+        ],
+        default="FBX_SCALE_NONE",
+    )
+
+    use_space_transform: BoolProperty(
+        name="Use Space Transform",
+        description="Apply global space transform to the object rotations",
         default=True,
     )
 
@@ -312,14 +362,58 @@ class ProjectFlowExportSettings(PropertyGroup):
         default=False,
     )
 
-    add_leaf_bones: BoolProperty(
-        name="Add Leaf Bones",
+    # -- Geometry --------------------------------------------------------
+
+    mesh_smooth_type: EnumProperty(
+        name="Smoothing",
         description=(
-            "Append an extra bone at the end of each chain. Unreal imports these "
-            "as real bones and they clutter the skeleton"
+            "Smoothing data to write. Unreal warns on every import when this is "
+            "Normals Only and falls back to flat shading"
         ),
+        items=[
+            ("OFF", "Normals Only", "No smoothing groups — Unreal will warn"),
+            ("FACE", "Face", "Face smoothing groups. The usual choice for Unreal"),
+            ("EDGE", "Edge", "Edge smoothing groups"),
+        ],
+        default="FACE",
+    )
+
+    use_subsurf: BoolProperty(
+        name="Export Subdivision Surface",
+        description="Write the subdivision level as FBX subdivision data instead of applying it",
         default=False,
     )
+
+    use_mesh_edges: BoolProperty(
+        name="Loose Edges",
+        description="Export edges that belong to no face, as two-vertex polygons",
+        default=False,
+    )
+
+    export_colors: BoolProperty(
+        name="Vertex Colors",
+        description="Export vertex colour layers",
+        default=True,
+    )
+
+    colors_type: EnumProperty(
+        name="Vertex Color Space",
+        description="Colour space to write vertex colours in",
+        items=[
+            ("NONE", "None", "Do not export colour attributes"),
+            ("SRGB", "sRGB", "Export in sRGB. What Unreal expects"),
+            ("LINEAR", "Linear", "Export in linear colour space"),
+        ],
+        default="SRGB",
+    )
+
+    prioritize_active_color: BoolProperty(
+        name="Prioritize Active Color",
+        description="Write the active colour attribute first, so importers pick it up as the main one",
+        default=False,
+    )
+
+    # -- Armature --------------------------------------------------------
 
     primary_bone_axis: EnumProperty(
         name="Primary Bone Axis",
@@ -335,13 +429,100 @@ class ProjectFlowExportSettings(PropertyGroup):
         default="X",
     )
 
+    use_armature_deform_only: BoolProperty(
+        name="Only Deform Bones",
+        description=(
+            "Skip control and helper bones. Unreal only needs deform bones, and "
+            "the rest become junk joints in the imported skeleton"
+        ),
+        default=False,
+    )
+
+    armature_nodetype: EnumProperty(
+        name="Armature FBXNode Type",
+        description="Node type for the armature itself. Leave on Null unless an importer complains",
+        items=[
+            ("NULL", "Null", "Plain node, the usual choice"),
+            ("ROOT", "Root", "Root node"),
+            ("LIMBNODE", "LimbNode", "Limb node"),
+        ],
+        default="NULL",
+    )
+
+    add_leaf_bones: BoolProperty(
+        name="Add Leaf Bones",
+        description=(
+            "Append an extra bone at the end of each chain. Unreal imports these "
+            "as real bones and they clutter the skeleton"
+        ),
+        default=False,
+    )
+
+    # -- Animation -------------------------------------------------------
+
+    bake_anim_use_all_bones: BoolProperty(
+        name="Key All Bones",
+        description="Write keyframes for all bones, so the animation is fully defined",
+        default=True,
+    )
+
+    bake_anim_use_nla_strips: BoolProperty(
+        name="NLA Strips",
+        description="Export each non-muted NLA strip as its own animation take",
+        default=True,
+    )
+
+    bake_anim_use_all_actions: BoolProperty(
+        name="All Actions",
+        description="Export every action as a separate take. Turn off to export only the active one",
+        default=True,
+    )
+
+    bake_anim_force_startend_keying: BoolProperty(
+        name="Force Start/End Keying",
+        description="Always key the first and last frame. Some importers need this",
+        default=True,
+    )
+
+    bake_anim_step: FloatProperty(
+        name="Sampling Rate",
+        description="How often to evaluate the animation, in frames",
+        default=1.0,
+        min=0.01,
+        max=100.0,
+    )
+
+    bake_anim_simplify_factor: FloatProperty(
+        name="Simplify",
+        description="How much to simplify baked curves. 0 disables simplification",
+        default=1.0,
+        min=0.0,
+        max=100.0,
+    )
+
+    # -- Textures --------------------------------------------------------
+
     embed_textures: BoolProperty(
         name="Embed Textures",
         description="Pack textures into the FBX so the file stands alone",
         default=True,
     )
 
-    # -- glTF specific -------------------------------------------------
+    path_mode: EnumProperty(
+        name="Path Mode",
+        description="How to write texture file paths",
+        items=[
+            ("AUTO", "Auto", "Relative for files under the blend, absolute otherwise"),
+            ("ABSOLUTE", "Absolute", "Full paths"),
+            ("RELATIVE", "Relative", "Paths relative to the exported file"),
+            ("MATCH", "Match", "Match the blend file's own path style"),
+            ("STRIP", "Strip Path", "Filename only"),
+            ("COPY", "Copy", "Copy textures next to the export. Required to embed"),
+        ],
+        default="COPY",
+    )
+
+    # -- glTF specific ---------------------------------------------------
 
     gltf_yup: BoolProperty(
         name="+Y Up",
@@ -349,7 +530,70 @@ class ProjectFlowExportSettings(PropertyGroup):
         default=True,
     )
 
-    # -- attachment behaviour -------------------------------------------
+    gltf_export_cameras: BoolProperty(
+        name="Cameras",
+        description="Include cameras in the glTF",
+        default=False,
+    )
+
+    gltf_export_lights: BoolProperty(
+        name="Punctual Lights",
+        description="Include lights via KHR_lights_punctual",
+        default=False,
+    )
+
+    gltf_export_extras: BoolProperty(
+        name="Custom Properties",
+        description="Write custom properties into the glTF extras field",
+        default=False,
+    )
+
+    gltf_export_skins: BoolProperty(
+        name="Skinning",
+        description="Include skinning data for rigged meshes",
+        default=True,
+    )
+
+    gltf_export_morph: BoolProperty(
+        name="Shape Keys",
+        description="Include shape keys as morph targets",
+        default=True,
+    )
+
+    gltf_export_texcoords: BoolProperty(
+        name="UVs",
+        description="Include UV coordinates",
+        default=True,
+    )
+
+    gltf_export_normals: BoolProperty(
+        name="Normals",
+        description="Include vertex normals",
+        default=True,
+    )
+
+    gltf_image_format: EnumProperty(
+        name="Images",
+        description="How to write textures",
+        items=[
+            ("AUTO", "Automatic", "Keep PNG for images with alpha, JPEG otherwise"),
+            ("JPEG", "JPEG", "Smaller files, no alpha channel"),
+            ("WEBP", "WebP", "Smallest files, not supported everywhere"),
+            ("NONE", "None", "Leave textures out entirely"),
+        ],
+        default="AUTO",
+    )
+
+    gltf_draco: BoolProperty(
+        name="Draco Compression",
+        description=(
+            "Compress geometry. Much smaller files, but not every importer "
+            "supports it — Unreal's glTF import does not"
+        ),
+        default=False,
+    )
+
+    # -- attachment behaviour --------------------------------------------
 
     also_attach_preview: BoolProperty(
         name="Also Attach GLB Preview",
@@ -361,22 +605,51 @@ class ProjectFlowExportSettings(PropertyGroup):
         default=True,
     )
 
+    # -- UI section toggles ----------------------------------------------
+    # There are too many options for one flat list, so the dialog groups them
+    # the way Blender's own exporter does and remembers what you had open.
+
+    show_include: BoolProperty(name="Include", default=True)
+    show_transform: BoolProperty(name="Transform", default=False)
+    show_geometry: BoolProperty(name="Geometry", default=False)
+    show_armature: BoolProperty(name="Armature", default=False)
+    show_animation: BoolProperty(name="Animation", default=False)
+
     def as_dict(self) -> Dict[str, Any]:
         """Plain-dict snapshot, for saving as a custom preset."""
         keys = [
-            "file_format", "selected_only", "apply_modifiers", "global_scale",
+            "file_format", "selected_only", "use_visible", "use_active_collection",
+            "use_custom_props", "apply_modifiers", "global_scale",
             "use_triangles", "use_tangents", "export_materials", "export_animations",
-            "axis_forward", "axis_up", "mesh_smooth_type", "apply_unit_scale",
-            "bake_space_transform", "add_leaf_bones", "primary_bone_axis",
-            "secondary_bone_axis", "embed_textures", "gltf_yup",
+            "axis_forward", "axis_up", "apply_unit_scale", "apply_scale_options",
+            "use_space_transform", "bake_space_transform",
+            "mesh_smooth_type", "use_subsurf", "use_mesh_edges", "export_colors",
+            "colors_type", "prioritize_active_color",
+            "primary_bone_axis", "secondary_bone_axis", "use_armature_deform_only",
+            "armature_nodetype", "add_leaf_bones",
+            "bake_anim_use_all_bones", "bake_anim_use_nla_strips",
+            "bake_anim_use_all_actions", "bake_anim_force_startend_keying",
+            "bake_anim_step", "bake_anim_simplify_factor",
+            "embed_textures", "path_mode",
+            "gltf_yup", "gltf_export_cameras", "gltf_export_lights",
+            "gltf_export_extras", "gltf_export_skins", "gltf_export_morph",
+            "gltf_export_texcoords", "gltf_export_normals", "gltf_image_format",
+            "gltf_draco",
             "also_attach_preview",
         ]
-        return {key: getattr(self, key) for key in keys}
+        values = {key: getattr(self, key) for key in keys}
+        # object_types is an ENUM_FLAG, which comes back as a set. JSON has no
+        # set type, so presets store it as a sorted list.
+        values["object_types"] = sorted(self.object_types)
+        return values
 
     def apply_settings(self, values: Dict[str, Any]) -> None:
         for key, value in values.items():
             if hasattr(self, key):
                 try:
+                    # ENUM_FLAG properties need a set; presets store a list.
+                    if key == "object_types" and isinstance(value, (list, tuple)):
+                        value = set(value)
                     setattr(self, key, value)
                 except (TypeError, ValueError):
                     # A preset saved by an older version may hold a value this
@@ -443,24 +716,46 @@ def export_with_settings(filepath: str, settings: ProjectFlowExportSettings) -> 
     if fmt == "FBX":
         kwargs = {
             "filepath": filepath,
+            # Include
             "use_selection": settings.selected_only,
+            "use_visible": settings.use_visible,
+            "use_active_collection": settings.use_active_collection,
+            "object_types": set(settings.object_types),
+            "use_custom_props": settings.use_custom_props,
+            # Transform
             "global_scale": settings.global_scale,
             "apply_unit_scale": settings.apply_unit_scale,
-            "apply_scale_options": "FBX_SCALE_NONE",
+            "apply_scale_options": settings.apply_scale_options,
+            "use_space_transform": settings.use_space_transform,
             "bake_space_transform": settings.bake_space_transform,
-            "object_types": {"MESH", "ARMATURE", "EMPTY", "OTHER"},
-            "use_mesh_modifiers": settings.apply_modifiers,
-            "mesh_smooth_type": settings.mesh_smooth_type,
-            "use_tspace": settings.use_tangents,
-            "use_triangles": settings.use_triangles,
-            "add_leaf_bones": settings.add_leaf_bones,
-            "primary_bone_axis": settings.primary_bone_axis,
-            "secondary_bone_axis": settings.secondary_bone_axis,
-            "bake_anim": settings.export_animations,
-            "path_mode": "COPY" if settings.embed_textures else "AUTO",
-            "embed_textures": settings.embed_textures,
             "axis_forward": settings.axis_forward,
             "axis_up": settings.axis_up,
+            # Geometry
+            "use_mesh_modifiers": settings.apply_modifiers,
+            "mesh_smooth_type": settings.mesh_smooth_type,
+            "use_subsurf": settings.use_subsurf,
+            "use_mesh_edges": settings.use_mesh_edges,
+            "use_tspace": settings.use_tangents,
+            "use_triangles": settings.use_triangles,
+            "colors_type": settings.colors_type if settings.export_colors else "NONE",
+            "prioritize_active_color": settings.prioritize_active_color,
+            # Armature
+            "primary_bone_axis": settings.primary_bone_axis,
+            "secondary_bone_axis": settings.secondary_bone_axis,
+            "use_armature_deform_only": settings.use_armature_deform_only,
+            "armature_nodetype": settings.armature_nodetype,
+            "add_leaf_bones": settings.add_leaf_bones,
+            # Animation
+            "bake_anim": settings.export_animations,
+            "bake_anim_use_all_bones": settings.bake_anim_use_all_bones,
+            "bake_anim_use_nla_strips": settings.bake_anim_use_nla_strips,
+            "bake_anim_use_all_actions": settings.bake_anim_use_all_actions,
+            "bake_anim_force_startend_keying": settings.bake_anim_force_startend_keying,
+            "bake_anim_step": settings.bake_anim_step,
+            "bake_anim_simplify_factor": settings.bake_anim_simplify_factor,
+            # Textures. Embedding requires COPY; anything else silently drops it.
+            "path_mode": "COPY" if settings.embed_textures else settings.path_mode,
+            "embed_textures": settings.embed_textures,
         }
         bpy.ops.export_scene.fbx(**_supported_kwargs(bpy.ops.export_scene.fbx, kwargs))
 
@@ -468,11 +763,26 @@ def export_with_settings(filepath: str, settings: ProjectFlowExportSettings) -> 
         kwargs = {
             "filepath": filepath,
             "export_format": fmt,
+            # Include
             "use_selection": settings.selected_only,
-            "export_apply": settings.apply_modifiers,
+            "use_visible": settings.use_visible,
+            "use_active_collection": settings.use_active_collection,
+            "export_cameras": settings.gltf_export_cameras,
+            "export_lights": settings.gltf_export_lights,
+            "export_extras": settings.gltf_export_extras,
+            # Transform / geometry
             "export_yup": settings.gltf_yup,
+            "export_apply": settings.apply_modifiers,
+            "export_texcoords": settings.gltf_export_texcoords,
+            "export_normals": settings.gltf_export_normals,
             "export_tangents": settings.use_tangents,
+            "export_colors": settings.export_colors,
             "export_materials": "EXPORT" if settings.export_materials else "NONE",
+            "export_image_format": settings.gltf_image_format,
+            "export_draco_mesh_compression_enable": settings.gltf_draco,
+            # Animation / rigging
+            "export_skins": settings.gltf_export_skins,
+            "export_morph": settings.gltf_export_morph,
             "export_animations": settings.export_animations,
         }
         bpy.ops.export_scene.gltf(**_supported_kwargs(bpy.ops.export_scene.gltf, kwargs))

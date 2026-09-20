@@ -38,6 +38,28 @@ def export_selection(filepath: str, settings) -> int:
     return len(selected)
 
 
+def _section(layout, settings, toggle_prop, title, body, *args):
+    """Draws a collapsible box.
+
+    ``invoke_props_dialog`` has no real sub-panels, so this fakes one with a
+    box, a triangle icon and a boolean the settings group remembers.
+    """
+    box = layout.box()
+    header = box.row(align=True)
+    header.alignment = "LEFT"
+    is_open = getattr(settings, toggle_prop)
+    header.prop(
+        settings,
+        toggle_prop,
+        text=title,
+        icon="TRIA_DOWN" if is_open else "TRIA_RIGHT",
+        emboss=False,
+    )
+    if is_open:
+        body(box, *args)
+    return box
+
+
 class PROJECTFLOW_OT_load_boards(Operator):
     bl_idname = "projectflow.load_boards"
     bl_label = "Load Boards"
@@ -288,33 +310,24 @@ class PROJECTFLOW_OT_attach_selection(Operator):
         col.use_property_split = True
         col.prop(self, "file_name")
         col.prop(settings, "file_format")
-        col.prop(settings, "apply_modifiers")
-        col.prop(settings, "use_triangles")
-        col.prop(settings, "use_tangents")
-        col.prop(settings, "export_materials")
-        col.prop(settings, "export_animations")
-        col.prop(settings, "global_scale")
 
-        if settings.file_format == "FBX":
-            fbx = layout.box()
-            fbx.label(text="FBX / Unreal", icon="EXPORT")
-            sub = fbx.column()
-            sub.use_property_split = True
-            sub.prop(settings, "mesh_smooth_type")
-            sub.prop(settings, "axis_forward")
-            sub.prop(settings, "axis_up")
-            sub.prop(settings, "apply_unit_scale")
-            sub.prop(settings, "bake_space_transform")
-            sub.prop(settings, "embed_textures")
-            sub.prop(settings, "add_leaf_bones")
-            sub.prop(settings, "primary_bone_axis")
-            sub.prop(settings, "secondary_bone_axis")
-        elif settings.file_format in {"GLB", "GLTF_SEPARATE"}:
-            gltf = layout.box()
-            gltf.label(text="glTF", icon="EXPORT")
-            sub = gltf.column()
-            sub.use_property_split = True
-            sub.prop(settings, "gltf_yup")
+        is_fbx = settings.file_format == "FBX"
+        is_gltf = settings.file_format in {"GLB", "GLTF_SEPARATE"}
+        is_obj = settings.file_format == "OBJ"
+
+        # Grouped the way Blender's own export dialog groups these, and
+        # collapsed by default — 50-odd options in one flat list is unusable.
+        _section(layout, settings, "show_include", "Include", self._draw_include,
+                 context, settings, is_fbx, is_gltf, is_obj)
+        _section(layout, settings, "show_transform", "Transform", self._draw_transform,
+                 context, settings, is_fbx, is_gltf, is_obj)
+        _section(layout, settings, "show_geometry", "Geometry", self._draw_geometry,
+                 context, settings, is_fbx, is_gltf, is_obj)
+        if not is_obj:
+            _section(layout, settings, "show_armature", "Armature", self._draw_armature,
+                     context, settings, is_fbx, is_gltf, is_obj)
+            _section(layout, settings, "show_animation", "Animation", self._draw_animation,
+                     context, settings, is_fbx, is_gltf, is_obj)
 
         # The website previews with <model-viewer>, which reads glTF only. Say so
         # here rather than letting someone wonder why their card shows no model.
@@ -322,6 +335,109 @@ class PROJECTFLOW_OT_attach_selection(Operator):
             warn = layout.box()
             warn.label(text="This format will not preview on the card", icon="INFO")
             warn.prop(settings, "also_attach_preview")
+
+    # -- section bodies ----------------------------------------------------
+
+    def _draw_include(self, box, context, settings, is_fbx, is_gltf, is_obj):
+        col = box.column()
+        col.use_property_split = True
+        col.prop(settings, "selected_only")
+        col.prop(settings, "use_visible")
+        col.prop(settings, "use_active_collection")
+
+        if is_fbx:
+            box.label(text="Object Types")
+            grid = box.grid_flow(row_major=True, columns=3, align=True)
+            # ENUM_FLAG draws as a toggle per value; expand gives the multi-select.
+            grid.prop(settings, "object_types", expand=True)
+            col = box.column()
+            col.use_property_split = True
+            col.prop(settings, "use_custom_props")
+        elif is_gltf:
+            col = box.column()
+            col.use_property_split = True
+            col.prop(settings, "gltf_export_cameras")
+            col.prop(settings, "gltf_export_lights")
+            col.prop(settings, "gltf_export_extras")
+
+    def _draw_transform(self, box, context, settings, is_fbx, is_gltf, is_obj):
+        col = box.column()
+        col.use_property_split = True
+        col.prop(settings, "global_scale")
+
+        if is_fbx:
+            col.prop(settings, "apply_scale_options")
+            col.prop(settings, "apply_unit_scale")
+            col.prop(settings, "use_space_transform")
+            col.prop(settings, "bake_space_transform")
+            col.separator()
+            col.prop(settings, "axis_forward")
+            col.prop(settings, "axis_up")
+        elif is_gltf:
+            col.prop(settings, "gltf_yup")
+        elif is_obj:
+            col.prop(settings, "axis_forward")
+            col.prop(settings, "axis_up")
+
+    def _draw_geometry(self, box, context, settings, is_fbx, is_gltf, is_obj):
+        col = box.column()
+        col.use_property_split = True
+        col.prop(settings, "apply_modifiers")
+        col.prop(settings, "use_triangles")
+        col.prop(settings, "export_materials")
+
+        if is_fbx:
+            col.prop(settings, "mesh_smooth_type")
+            col.prop(settings, "use_tangents")
+            col.prop(settings, "use_subsurf")
+            col.prop(settings, "use_mesh_edges")
+            col.separator()
+            col.prop(settings, "export_colors")
+            sub = col.column()
+            sub.enabled = settings.export_colors
+            sub.prop(settings, "colors_type")
+            sub.prop(settings, "prioritize_active_color")
+            col.separator()
+            col.prop(settings, "embed_textures")
+            path = col.column()
+            # Embedding forces COPY, so offering a path mode here would be a lie.
+            path.enabled = not settings.embed_textures
+            path.prop(settings, "path_mode")
+        elif is_gltf:
+            col.prop(settings, "gltf_export_normals")
+            col.prop(settings, "gltf_export_texcoords")
+            col.prop(settings, "use_tangents")
+            col.prop(settings, "export_colors")
+            col.prop(settings, "gltf_image_format")
+            col.prop(settings, "gltf_draco")
+
+    def _draw_armature(self, box, context, settings, is_fbx, is_gltf, is_obj):
+        col = box.column()
+        col.use_property_split = True
+        if is_fbx:
+            col.prop(settings, "primary_bone_axis")
+            col.prop(settings, "secondary_bone_axis")
+            col.prop(settings, "armature_nodetype")
+            col.prop(settings, "use_armature_deform_only")
+            col.prop(settings, "add_leaf_bones")
+        elif is_gltf:
+            col.prop(settings, "gltf_export_skins")
+            col.prop(settings, "gltf_export_morph")
+
+    def _draw_animation(self, box, context, settings, is_fbx, is_gltf, is_obj):
+        col = box.column()
+        col.use_property_split = True
+        col.prop(settings, "export_animations")
+
+        sub = col.column()
+        sub.enabled = settings.export_animations
+        if is_fbx:
+            sub.prop(settings, "bake_anim_use_all_bones")
+            sub.prop(settings, "bake_anim_use_nla_strips")
+            sub.prop(settings, "bake_anim_use_all_actions")
+            sub.prop(settings, "bake_anim_force_startend_keying")
+            sub.prop(settings, "bake_anim_step")
+            sub.prop(settings, "bake_anim_simplify_factor")
 
     def execute(self, context):
         props = _props(context)

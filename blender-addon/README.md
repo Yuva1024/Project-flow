@@ -145,6 +145,31 @@ destinations:
 Adjust anything and hit **+** to save your own named preset. They live as JSON
 in Blender's config directory, so they survive reinstalling the extension.
 
+#### The options
+
+The dialog carries Blender's full export option set, grouped the way its own
+exporter groups them. Sections are collapsed by default and remember what you
+left open.
+
+| Group | Options |
+|---|---|
+| **Include** | Selected only, visible only, active collection, object types (mesh / armature / empty / camera / light / other), custom properties |
+| **Transform** | Scale, apply scalings, unit scale, space transform, apply transform, forward and up axis |
+| **Geometry** | Apply modifiers, smoothing, triangulate, tangent space, subdivision, loose edges, vertex colours and colour space, materials, embed textures, path mode |
+| **Armature** | Primary and secondary bone axis, armature node type, deform bones only, leaf bones |
+| **Animation** | Bake animation, key all bones, NLA strips, all actions, force start/end keying, sampling rate, simplify |
+
+For glTF the equivalents appear instead: cameras, punctual lights, extras,
+skinning, shape keys, UVs, normals, image format and Draco compression.
+
+That covers 34 of the 39 FBX exporter parameters. The five left out are the
+batch-export settings — `batch_mode`, `collection`, `use_batch_own_dir` — which
+have no meaning when exporting a single file to upload, plus
+`use_mesh_modifiers_render` and `use_metadata`.
+
+Note that **lights and cameras are off by default**. Unreal imports stray lights
+as actors you then have to delete, so they are opt-in rather than opt-out.
+
 #### Why the Unreal preset is set up the way it is
 
 Each value fixes a specific, well-known failure importing Blender output into UE:
