@@ -2,13 +2,13 @@
 
 An advanced full-stack project management and creative collaboration platform built for developers, designers, and 3D digital media creators.
 
-Project-flow brings together high-speed **Kanban boards**, real-time **interactive whiteboards**, an embedded **WebGL 3D model engine**, and a centralized **Workspace Asset Library** powered by **Content-Addressable Storage (CAS)** on Cloudflare R2.
+Project-flow brings together high-speed **Kanban boards**, real-time **interactive whiteboards**, an embedded **WebGL 3D model engine**, a centralized **Workspace Asset Library** powered by **Content-Addressable Storage (CAS)** on Cloudflare R2, and a **zero-disk cloud version control streaming bridge**.
 
 ---
 
 ## 📖 Complete Technical Documentation
 
-For the complete architectural breakdown, database models, storage deduplication internals, API route catalog, and deployment instructions, see:
+For the complete architectural breakdown, database models, storage deduplication internals, 3D stability engine, VCS streaming pipeline, API route catalog, and deployment instructions, see:
 
 👉 **[PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md)**
 
@@ -18,13 +18,21 @@ For the complete architectural breakdown, database models, storage deduplication
 
 - 📋 **Kanban Boards & Cards**: Smooth fractional-position drag & drop, checklists with live completion progress, custom color-coded labels, user assignments, comment threads, and timestamped activity logs.
 - 🎨 **Interactive Collaborative Whiteboards**: Infinite canvas for visual brainstorming with shapes, freehand drawing, sticky notes, and instant persistence.
-- 🧊 **Integrated 3D Model Engine**: Real-time WebGL orbit viewer powered by **Three.js** and **React Three Fiber**, supporting `.glb`, `.gltf`, `.obj`, and `.fbx` with wireframe toggle, autorotation, and direct attachment drag-and-drop into cards.
+- 🧊 **Integrated 3D Model Engine & Stability Guard**:
+  - Real-time WebGL orbit viewer powered by **Three.js** and **React Three Fiber**, supporting `.glb`, `.gltf`, `.obj`, and `.fbx` with wireframe toggle and autorotation.
+  - Progressive 3D thumbnails powered by Google `<model-viewer>`.
+  - Format-validation stability guard that detects non-glTF binary formats (e.g. Kaydara FBX) and provides dedicated 3D asset cards to prevent JSON parser browser crashes.
 - 🗄️ **Workspace Asset Library**: Centralized asset hub with hierarchical folders, color-coded taxonomy tags, category filters (3D models, images, videos, audio), and live search.
 - ⚡ **Smart Shared Storage & Deduplication**:
   - **Content-Addressable Storage (CAS)** with SHA-256 cryptographic hashing under `files/<hash>.<ext>` in Cloudflare R2.
   - Zero duplicate file storage: identical files are stored once across the entire workspace.
   - **Attach from Library** and **Add to Library** actions on cards.
   - Safe reference-counted deletion: deleting from a card never breaks the library, and deleting from the library preserves card attachments.
+- 🚀 **Zero-Disk Cloud VCS Streaming Service**:
+  - Direct Node.js `Readable` stream from Cloudflare R2 to version control APIs (such as Diversion) using HTTP chunked transfer encoding (`Transfer-Encoding: chunked`, `Content-Type: application/octet-stream`).
+  - Pushes gigabyte-scale 3D game assets directly to remote repositories without writing temporary binary files to server disk or overloading RAM.
+  - Automated remote workspace resolution, branch commit creation, and credential handling.
+- 📜 **Polymorphic ActivityLog Audit Trail**: Unified audit trail associating activities with either Kanban cards or digital assets.
 - 🔐 **Multi-Tenant Workspaces & RBAC**: Granular role-based permissions (`OWNER`, `ADMIN`, `MEMBER`), team invites, and member management.
 
 ---
@@ -32,7 +40,7 @@ For the complete architectural breakdown, database models, storage deduplication
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 16 (App Router + Turbopack), React 19, TypeScript, Three.js, React Three Fiber, Google `@google/model-viewer`, Zustand, Framer Motion, Lucide icons.
-- **Backend**: Node.js, Express 5, TypeScript, Prisma ORM, PostgreSQL, Multer, Zod, Helmet, JWT, Rate Limiting.
+- **Backend**: Node.js, Express 5, TypeScript, Prisma ORM, PostgreSQL, Multer, Zod, Helmet, JWT, Rate Limiting, Stream & Axios chunked pipelines.
 - **Object Storage**: Cloudflare R2 via AWS S3 SDK (SHA-256 CAS Deduplication).
 
 ---

@@ -1,6 +1,6 @@
 # Project-flow: Comprehensive Technical Documentation & Architecture Guide
 
-> **Project-flow** is a modern, high-performance project management and creative collaboration platform designed for teams managing digital media, 3D game assets, and complex development workflows. It bridges the gap between structured project tracking (Kanban boards) and creative asset management (interactive 3D viewers, workspace asset libraries, and collaborative whiteboards).
+> **Project-flow** is a modern, high-performance project management and creative collaboration platform designed for teams managing digital media, 3D game assets, and complex development workflows. It bridges the gap between structured project tracking (Kanban boards) and creative asset management (interactive 3D viewers, workspace asset libraries, collaborative whiteboards, and zero-disk cloud version control streaming).
 
 ---
 
@@ -10,13 +10,16 @@
 2. [Technology Stack](#2-technology-stack)
 3. [System Architecture Diagram](#3-system-architecture-diagram)
 4. [Database Schema & Data Model](#4-database-schema--data-model)
+   - [4.1 Entity Relationship Diagram (ERD)](#41-entity-relationship-diagram-erd)
+   - [4.2 Core Models & Polymorphic ActivityLog](#42-core-models--polymorphic-activitylog)
 5. [Core Subsystems & Features](#5-core-subsystems--features)
    - [5.1 Workspaces & Role-Based Access Control (RBAC)](#51-workspaces--role-based-access-control-rbac)
    - [5.2 Kanban Boards & Card Engine](#52-kanban-boards--card-engine)
    - [5.3 Interactive Collaborative Whiteboards](#53-interactive-collaborative-whiteboards)
-   - [5.4 3D Model Visualization Engine](#54-3d-model-visualization-engine)
+   - [5.4 3D Model Visualization & Stability Engine](#54-3d-model-visualization--stability-engine)
    - [5.5 Workspace Asset Library](#55-workspace-asset-library)
    - [5.6 Smart Shared Asset & Content-Addressable Storage (CAS)](#56-smart-shared-asset--content-addressable-storage-cas)
+   - [5.7 Zero-Disk Cloud Version Control (VCS) Streaming Service](#57-zero-disk-cloud-version-control-vcs-streaming-service)
 6. [Cloudflare R2 Storage & Migration Pipeline](#6-cloudflare-r2-storage--migration-pipeline)
 7. [API Route Catalog](#7-api-route-catalog)
 8. [Frontend Architecture & State Management](#8-frontend-architecture--state-management)
@@ -27,11 +30,14 @@
 
 ## 1. Executive Summary & High-Level Architecture
 
-Project-flow is engineered as a decoupled full-stack application:
+Project-flow is engineered as a decoupled full-stack application designed specifically for digital media teams, game studios, and high-velocity engineering organizations:
+
 - **Frontend Client**: Built with **Next.js 16 (App Router + Turbopack)** and **React 19**, styled with a custom Apple-inspired design system adhering to strict WCAG contrast standards, fluent glassmorphism, responsive navigation, and keyboard-first accessibility.
 - **Backend API**: Powered by **Node.js, Express 5, and TypeScript**, featuring **Prisma ORM** for PostgreSQL data access, strict input validation via **Zod**, centralized JWT authentication, rate limiting, and HTTP parameter pollution protection.
 - **Object Storage**: Powered by **Cloudflare R2** via the `@aws-sdk/client-s3` API, utilizing **Content-Addressable Storage (CAS)** with **SHA-256 cryptographic hash deduplication** to guarantee that identical files are only stored once across the entire workspace.
-- **Media Engine**: Deep 3D integration with **Three.js**, **React Three Fiber**, and **Google `<model-viewer>`**, enabling real-time WebGL rendering, orbit rotation, wireframe inspection, lighting controls, and drag-and-drop asset assignment.
+- **3D Media Engine**: Deep 3D integration with **Three.js**, **React Three Fiber**, and **Google `<model-viewer>`**, enabling real-time WebGL rendering, orbit rotation, wireframe inspection, lighting controls, drag-and-drop asset assignment, and format-validation stability guards preventing binary parser crashes.
+- **Zero-Disk VCS Streaming**: A dedicated cloud version control bridge that pipes multi-gigabyte 3D files directly from Cloudflare R2 to version control APIs (such as Diversion) using HTTP chunked transfer streams without touching local disk or exhausting server RAM.
+- **Polymorphic Activity Audit Trail**: Unified audit logging across both Kanban card workflows and digital asset library operations.
 
 ---
 
@@ -60,7 +66,7 @@ Project-flow is engineered as a decoupled full-stack application:
 | **TypeScript** | `5.9.3` | Type safety and modern ECMAScript compilation |
 | **Prisma ORM** | `5.10.2` | Type-safe database queries, schema migrations, and connection pooling |
 | **PostgreSQL** | `15+` | Relational database engine |
-| **@aws-sdk/client-s3** | `3.1101.0` | Cloudflare R2 object storage integration (S3-compatible) |
+| **@aws-sdk/client-s3** | `3.1101.0` | Cloudflare R2 object storage integration (S3-compatible SDK) |
 | **Zod** | `4.3.6` | Runtime request body and query parameter validation |
 | **Multer** | `2.2.0` | Multipart/form-data upload handling with memory buffer storage |
 | **bcryptjs** | `3.0.3` | Password hashing with cryptographic salts |
@@ -68,39 +74,42 @@ Project-flow is engineered as a decoupled full-stack application:
 | **Helmet** | `8.1.0` | HTTP security headers |
 | **express-rate-limit** | `8.2.1` | IP-based request throttling and abuse prevention |
 | **Compression & HPP** | `1.8.1 / 0.2.3` | Gzip compression and parameter pollution protection |
+| **Stream & Axios** | `1.7.9` | Zero-disk chunked transfer streaming pipeline for external VCS exports |
 
 ---
 
 ## 3. System Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             CLIENT (Next.js 16)                             │
-│                                                                             │
-│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────────────────┐  │
-│  │ Kanban Board   │  │ Interactive      │  │ Workspace Asset Library     │  │
-│  │ (Cards, Lists, │  │ Whiteboard       │  │ (Folders, Tags, 3D Models,  │  │
-│  │  Checklists)   │  │ (Infinite Canvas)│  │  Multi-Format Previews)     │  │
-│  └───────┬────────┘  └────────┬─────────┘  └──────────────┬──────────────┘  │
-│          │                    │                           │                 │
-│          └────────────────────┼───────────────────────────┘                 │
-│                               ▼                                             │
-│               [Axios Interceptor + JWT Bearer Auth]                         │
-└───────────────────────────────┬─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                               CLIENT (Next.js 16)                               │
+│                                                                                 │
+│  ┌────────────────┐  ┌──────────────────┐  ┌─────────────────────────────────┐  │
+│  │ Kanban Board   │  │ Interactive      │  │ Workspace Asset Library         │  │
+│  │ (Cards, Lists, │  │ Whiteboard       │  │ (Folders, Tags, 3D Format Guard,│  │
+│  │  Checklists)   │  │ (Infinite Canvas)│  │  Multi-Type Grid/List Previews) │  │
+│  └───────┬────────┘  └────────┬─────────┘  └────────────────┬────────────────┘  │
+│          │                    │                             │                   │
+│          └────────────────────┼─────────────────────────────┘                   │
+│                               ▼                                                 │
+│                 [Axios Client + JWT Bearer Auth]                                │
+└───────────────────────────────┬─────────────────────────────────────────────────┘
                                 │ HTTP / JSON / Multipart
                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            BACKEND (Express API)                            │
-│                                                                             │
-│  [Helmet Security] ──► [CORS Allowlist] ──► [Rate Limiter] ──► [Auth Guard] │
-│                                                                             │
-│  ┌───────────────────────┐  ┌─────────────────────────┐  ┌───────────────┐  │
-│  │ /api/workspaces       │  │ /api/.../boards & cards │  │ /api/.../wb   │  │
-│  └───────────────────────┘  └─────────────────────────┘  └───────────────┘  │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ /api/workspaces/:workspaceId/assets (CAS + Reference Counter Engine)  │  │
-│  └───────────────────────────────────┬───────────────────────────────────┘  │
-└──────────────────────────────────────┼──────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              BACKEND (Express API)                              │
+│                                                                                 │
+│  [Helmet Security] ──► [CORS Allowlist] ──► [Rate Limiter] ──► [Auth Guard]     │
+│                                                                                 │
+│  ┌───────────────────────┐  ┌─────────────────────────┐  ┌───────────────────┐  │
+│  │ /api/workspaces       │  │ /api/.../boards & cards │  │ /api/.../wb       │  │
+│  └───────────────────────┘  └─────────────────────────┘  └───────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────────────────────┐  │
+│  │ /api/workspaces/:workspaceId/assets                                       │  │
+│  │  ├── CAS Reference Counter Engine (Attach / Promote / Safe Independent Del)│  │
+│  │  └── Zero-Disk VCS Streaming Service (R2 -> Node Stream -> Diversion API) │  │
+│  └───────────────────────────────────┬───────────────────────────────────────┘  │
+└──────────────────────────────────────┼──────────────────────────────────────────┘
                                        │
                 ┌──────────────────────┴──────────────────────┐
                 ▼                                             ▼
@@ -111,57 +120,91 @@ Project-flow is engineered as a decoupled full-stack application:
 │ • User / Workspace / Member  │              │ files/                       │
 │ • Board / List / Card        │              │  ├── <sha256-hash-a>.glb     │
 │ • Attachment / CardAsset     │              │  ├── <sha256-hash-b>.png     │
-│ • Asset / AssetFolder / Tag  │              │  └── <sha256-hash-c>.mp4     │
-│ • Whiteboard / ActivityLog   │              │                              │
-└──────────────────────────────┘              └──────────────────────────────┘
+│ • Asset / AssetFolder / Tag  │              │  └── <sha256-hash-c>.fbx     │
+│ • Polymorphic ActivityLog    │              │                              │
+│ • Whiteboard JSON Elements   │              └──────────────┬───────────────┘
+└──────────────────────────────┘                             │
+                                                             │ Node.js Readable
+                                                             │ Stream (Chunked)
+                                                             ▼
+                                              ┌──────────────────────────────┐
+                                              │   External VCS (Diversion)   │
+                                              │  (Zero-Disk Binary Transfer) │
+                                              │                              │
+                                              │ • Remote Workspace Prov.     │
+                                              │ • Branch Target Resolution   │
+                                              │ • Atomic Commit Creation     │
+                                              └──────────────────────────────┘
 ```
 
 ---
 
 ## 4. Database Schema & Data Model
 
-The PostgreSQL database is managed through Prisma. The schema establishes strict referential integrity with cascading deletes where appropriate:
+The PostgreSQL database is managed through Prisma ORM. The schema establishes strict referential integrity with cascading deletes where appropriate.
 
-### Entity Relationship Summary
+### 4.1 Entity Relationship Diagram (ERD)
+
 ```
 User ────────────< WorkspaceMember >──────────── Workspace
   │                                                  │
   ├──────< Card (Creator)                            ├──────< Board ───< List ───< Card
   ├──────< Comment                                   ├──────< Whiteboard
-  ├──────< ActivityLog                               ├──────< AssetFolder (Self-referencing tree)
+  ├──────< ActivityLog (Actor)                       ├──────< AssetFolder (Self-referencing tree)
   ├──────< Notification                              ├──────< AssetTag
   └──────< Asset (Uploader)                          └──────< Asset
-                                                                │
-                 Card ─────────< CardAsset >────────────────────┤ (Junction)
-                  │                                             │
-                  ├──< Attachment                               ├──< AssetTagAssignment
-                  ├──< Checklist ──< ChecklistItem              └──> AssetFolder (Optional)
-                  ├──< CardMember >── User
-                  └──< CardLabel >── Label ──> Board
+                                                                 │
+                 Card ─────────< CardAsset >─────────────────────┤ (Junction)
+                  │                                              │
+                  ├──< Attachment                                ├──< AssetTagAssignment
+                  ├──< Checklist ──< ChecklistItem               ├──< ActivityLog (Polymorphic)
+                  ├──< CardMember >── User                       └──> AssetFolder (Optional)
+                  ├──< CardLabel >── Label ──> Board
+                  └──< ActivityLog (Polymorphic)
 ```
 
-### Core Models
+### 4.2 Core Models & Polymorphic ActivityLog
 
 #### `User` & `Workspace`
-- `User`: Handles identity, email uniqueness, hashed passwords, avatars, admin status, and password reset tokens.
+- `User`: Handles identity, email uniqueness, hashed passwords (`bcryptjs`), avatars, admin status, and password reset tokens.
 - `Workspace`: Multi-tenant boundary. All boards, whiteboards, assets, and folders belong strictly to a workspace.
 - `WorkspaceMember`: Junction table with composite primary key `[workspaceId, userId]` and role enumeration (`ADMIN` or `MEMBER`).
 
 #### `Board`, `List`, `Card`
 - `Board`: Belongs to a workspace; contains lists and board-scoped custom labels.
 - `List`: Contains cards; sorted using a floating-point `position` field for collision-free drag-and-drop ordering.
-- `Card`: The work unit containing title, rich description, priority (`low`, `medium`, `high`, `urgent`), due date, position, creator, comments, checklist items, assigned members, attachments, activity log, and JSON-encoded `model3DSections`.
+- `Card`: The work unit containing title, rich description, priority (`low`, `medium`, `high`, `urgent`), due date, position, creator, comments, checklist items, assigned members, attachments, activity logs, and JSON-encoded `model3DSections`.
 
 #### `Asset`, `AssetFolder`, `AssetTag`, `CardAsset`
-- `Asset`: Stores workspace media metadata: `fileName`, `fileUrl`, `fileSize`, `mimeType`, `uploadedById`, optional `folderId`.
-- `AssetFolder`: Recursive tree model with optional `parentId` self-reference for nested folder structures.
+- `Asset`: Stores workspace media metadata: `fileName`, `fileUrl`, `fileSize`, `mimeType`, `uploadedById`, optional `folderId`, and timestamped audit references.
+- `AssetFolder`: Recursive tree model with optional `parentId` self-reference for nested folder hierarchies.
 - `AssetTag`: Workspace-scoped tags with custom hex colors (unique constraint on `[workspaceId, name]`).
 - `AssetTagAssignment`: Many-to-many junction between `Asset` and `AssetTag`.
-- `CardAsset`: Many-to-many junction between `Card` and `Asset`. Allows cards to reference workspace library assets directly without duplication.
+- `CardAsset`: Many-to-many junction between `Card` and `Asset`. Allows cards to reference workspace library assets directly without duplicating storage.
 - `Attachment`: Local card attachments. When an asset is deleted from the library but used on a card, it safely converts into an `Attachment` row so the card never breaks.
 
-#### `Whiteboard`
-- `Whiteboard`: Stores infinite canvas drawings, shapes, sticky notes, and text elements serialized as JSON.
+#### Polymorphic `ActivityLog`
+The `ActivityLog` model provides a unified audit trail across both Kanban project tracking and digital asset operations:
+
+```prisma
+model ActivityLog {
+  id        String   @id @default(uuid())
+  cardId    String?
+  assetId   String?
+  userId    String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+  card      Card?    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+```
+
+- **Dual Association**: `cardId` and `assetId` are mutually optional nullable fields.
+- **Kanban Events**: When a card is updated, moved, commented on, or has files attached, `cardId` is populated.
+- **Asset Events**: When an asset is uploaded, tagged, modified, or exported to a version control repository (such as Diversion), `assetId` is populated with structured metadata recorded in `details` (e.g. repository ID, target branch, target file path, and commit hash).
+- **Referential Integrity**: Cascading deletes ensure logs clean up properly if their parent entity is permanently removed.
 
 ---
 
@@ -193,7 +236,7 @@ User ────────────< WorkspaceMember >──────�
 
 ---
 
-### 5.4 3D Model Visualization Engine
+### 5.4 3D Model Visualization & Stability Engine
 Project-flow includes an industry-grade 3D model engine supporting game-ready formats (`.glb`, `.gltf`, `.obj`, `.fbx`):
 
 1. **Integrated WebGL Orbit Viewer (`Three3DViewer.tsx`)**:
@@ -204,9 +247,17 @@ Project-flow includes an industry-grade 3D model engine supporting game-ready fo
    - Users can drag 3D attachments directly from the Card's Attachments list into a 3D section to load and preview the model instantly.
 3. **Card-Level 3D Sections**:
    - Cards store `model3DSections` in JSON, allowing multiple 3D models to be embedded in a single card (e.g. "Low Poly Mesh", "High Poly Sculpt", "Rigged Variant").
-4. **Thumbnail Previews (`AssetLibrary.tsx`)**:
-   - Google `<model-viewer>` progressively renders interactive 3D thumbnails in the library grid without opening the modal.
-5. **CORS Security Proxy (`/api/proxy-3d`)**:
+4. **Google `<model-viewer>` Progressive Rendering (`AssetLibrary.tsx`)**:
+   - Progressive rendering of interactive 3D thumbnails directly in the asset library grid.
+5. **3D Parser Stability Guard**:
+   - Google `<model-viewer>` expects `.glb` or `.gltf` (JSON + binary buffers). When passed non-standard binary 3D formats (such as Autodesk Kaydara FBX `.fbx` or binary OBJ), `<model-viewer>` attempts to parse the binary header as JSON, resulting in an unhandled crash:
+     ```
+     SyntaxError: Unexpected token 'K', "Kaydara FB"... is not valid JSON
+     ```
+   - **Resolution**: Project-flow implements a strict format-validation guard (`isGlbOrGltf`):
+     - Valid `.glb`/`.gltf` assets render interactive `<model-viewer>` previews.
+     - Binary `.fbx`, `.obj`, and other 3D formats render a dedicated **3D Asset Card** with format badges, mesh metadata, and direct download buttons, completely preventing browser thread and JSON parser crashes.
+6. **CORS Security Proxy (`/api/proxy-3d`)**:
    - Next.js server-side route handles CORS headers and binary streaming to ensure cross-origin 3D textures and binary buffers load seamlessly without browser security blocks.
 
 ---
@@ -240,6 +291,45 @@ A critical innovation in Project-flow is its **Smart Shared (Reference-Counted) 
 
 ---
 
+### 5.7 Zero-Disk Cloud Version Control (VCS) Streaming Service
+Game development workflows frequently deal with multi-gigabyte 3D models, textures, and engine binaries that need to be committed to version control systems like **Diversion** (a modern cloud-native Git alternative built for game assets):
+
+#### Architectural Challenge:
+Downloading a 500MB to 2GB binary asset to the server's local disk before uploading it to the VCS API creates serious bottlenecks:
+- Exhausts server ephemeral disk space in serverless/container environments.
+- Causes high memory consumption if buffered in RAM.
+- Introduces double-latency (download to server, then upload to VCS).
+
+#### Project-flow Solution: Zero-Disk Streaming Pipeline
+Project-flow implements a zero-disk streaming bridge (`backend/src/services/diversionService.ts`):
+
+```
+Cloudflare R2 Bucket
+        │
+        ▼ (S3 GetObjectCommand)
+Node.js Readable Stream (Chunks)
+        │
+        ▼ (HTTP Chunked Transfer-Encoding: chunked)
+Diversion REST API (/repos/{repo_id}/files/{workspace_id}/{path})
+```
+
+1. **Direct Stream Extraction**:
+   - The backend retrieves a Node.js `Readable` stream directly from Cloudflare R2 using `GetObjectCommand({ Bucket, Key })`.
+2. **Chunked Octet-Stream Piped to VCS API**:
+   - The stream is piped straight into `axios.post` with `Content-Type: application/octet-stream` and `Transfer-Encoding: chunked`.
+   - Zero local disk files are created, and memory consumption remains capped at the network buffer chunk size (~64KB).
+3. **Automated Workspace Resolution**:
+   - Diversion requires a valid `workspace_id` as a reference ID for file mutations.
+   - The service inspects existing repository workspaces (`GET /repos/{repo_id}/workspaces`), selects an active workspace, or automatically provisions one (`POST /repos/{repo_id}/workspaces`) if none exists.
+4. **Target Branch & Commit Creation**:
+   - After the binary stream is accepted, the service issues an atomic commit command (`POST /repos/{repo_id}/workspaces/{workspace_id}/commit`) with custom commit messages and path specifications.
+5. **Polymorphic Activity Logging**:
+   - Successful exports log an entry to `ActivityLog` linking the asset, actor, repository, branch, and destination path.
+6. **Dynamic Credential Resolution**:
+   - Supports user-specified API keys provided per-request via `x-diversion-api-key` header or request payload, with automatic fallback to server environment variables (`DIVERSION_API_TOKEN`).
+
+---
+
 ## 6. Cloudflare R2 Storage & Migration Pipeline
 
 ### Directory Structure in Cloudflare R2
@@ -249,7 +339,7 @@ projectflowuploads/
 └── files/
     ├── 9227a7d4a2c3a0322fcefb4304deb18f9a5b2f05accb6bfbbd0283cea7f5e4d2.glb
     ├── 4c89b120f3e82710da89b21a8123efd927189021890123789012389012389012.png
-    └── 7e12f00812378912389012389012389012389012389012389012389012389012.mp4
+    └── 7e12f00812378912389012389012389012389012389012389012389012389012.fbx
 ```
 
 ### The Migration Pipeline (`migrate-r2-unified-storage.ts`)
@@ -321,6 +411,11 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
 - `POST /:assetId/tags/:tagId`: Assign tag to asset.
 - `DELETE /:assetId/tags/:tagId`: Remove tag from asset.
 
+### Version Control & VCS Export (`/api/workspaces/:workspaceId/assets`)
+- `POST /diversion/repos`: List accessible Diversion repositories for user/workspace.
+- `POST /diversion/folders`: List existing directory paths in a repository branch tree.
+- `POST /:assetId/send-to-diversion`: Stream asset binary directly from Cloudflare R2 to Diversion repository with zero local disk buffering, automated workspace setup, and atomic branch commit.
+
 ### Whiteboards (`/api/workspaces/:workspaceId/whiteboards`)
 - `GET /`: List workspace whiteboards.
 - `POST /`: Create whiteboard.
@@ -342,7 +437,9 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
 - `CardModal.tsx`: Comprehensive modal for card management: description editor, checklists, custom labels, assignees, activity log, attachments list with media lightbox, 3D model viewer sections, and library picker dialog.
 - `AssetLibrary.tsx`: Full-page asset management system with taxonomy sidebar (folders & tags), search, category filters, drag-and-drop dropzone, and responsive grid/list cards.
 - `Three3DViewer.tsx`: WebGL 3D canvas featuring Three.js OrbitControls, wireframe toggle, autorotate, lighting presets, and model dropzone.
-- `AssetDetailPanel.tsx`: Flyout drawer for inspecting asset details, managing tags, copying public URLs, downloading files, and jumping to linked cards.
+- `ModelViewer3D.tsx`: Interactive Google `<model-viewer>` component with camera controls, orbit angles, auto-rotation, and instant local blob preview.
+- `AssetDetailPanel.tsx`: Flyout drawer for inspecting asset details, managing tags, copying public URLs, downloading files, viewing 3D previews with format guards, and jumping to linked cards.
+- `SendToDiversionModal.tsx` & `DiversionOptionsModal.tsx`: High-performance dialogs for selecting VCS repositories, exploring branch folder trees, typing commit messages, and managing API keys.
 
 ---
 
@@ -350,13 +447,17 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
 
 1. **Content-Addressable Storage (CAS)**:
    - Eliminates redundant R2 uploads by verifying SHA-256 hashes with `HeadObjectCommand` before streaming bytes over the wire.
-2. **Server-Side Download Proxy (`/api/proxy-download`)**:
+2. **Zero-Disk VCS Streaming**:
+   - Binary streams are forwarded directly from S3 to destination APIs without touching local filesystem or creating memory spikes.
+3. **3D Parser Crash Prevention**:
+   - Validates MIME types and file extensions before passing models to Google `<model-viewer>`, preventing binary parse crashes on formats like `.fbx` and `.obj`.
+4. **Server-Side Download Proxy (`/api/proxy-download`)**:
    - Sets appropriate `Content-Disposition: attachment; filename="..."` headers to force clean browser downloads regardless of cross-origin storage headers.
-3. **CORS Streaming Proxy (`/api/proxy-3d`)**:
+5. **CORS Streaming Proxy (`/api/proxy-3d`)**:
    - Resolves cross-origin WebGL texture and buffer restrictions by proxying 3D assets securely through Next.js edge routes.
-4. **Dynamic Lazy-Loading**:
+6. **Dynamic Lazy-Loading**:
    - Three.js WebGL dependencies and Google `<model-viewer>` are loaded dynamically (`next/dynamic` with `ssr: false`) to keep initial bundle size minimal.
-5. **Security Defenses**:
+7. **Security Defenses**:
    - Rate limiting on sensitive endpoints (auth, file uploads, global API).
    - Helmet HTTP headers and Parameter Pollution (HPP) defenses.
    - Strict Zod validation on request payloads.
@@ -369,6 +470,7 @@ To transition legacy split directories (`attachments/` and `assets/`) to the uni
 - Node.js `20.x` or higher
 - PostgreSQL `15.x` or higher
 - Cloudflare R2 bucket with API tokens
+- (Optional) Diversion API Key for VCS export features
 
 ### Environment Configuration
 
@@ -386,6 +488,10 @@ CLOUDFLARE_R2_ACCESS_KEY_ID="your_r2_access_key"
 CLOUDFLARE_R2_SECRET_ACCESS_KEY="your_r2_secret_key"
 CLOUDFLARE_R2_BUCKET_NAME="projectflowuploads"
 CLOUDFLARE_R2_PUBLIC_URL="https://pub-yourbucketid.r2.dev"
+
+# Optional: Diversion VCS Integration
+DIVERSION_API_TOKEN="your_diversion_api_token"
+DIVERSION_API_BASE_URL="https://api.diversion.dev/v0"
 ```
 
 #### Frontend (`frontend/.env.local`)
