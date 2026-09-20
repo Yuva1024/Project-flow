@@ -130,6 +130,47 @@ day.
 Also available: attach without advancing, move to any section (including
 backwards, for rework), and post a comment.
 
+### Export presets
+
+The attach dialog carries the export options, with presets for the common
+destinations:
+
+| Preset | Format | For |
+|---|---|---|
+| **Unreal Engine (FBX)** | FBX | Importing into UE. Best fidelity |
+| **Unreal Engine (glTF)** | GLB | UE5 Interchange, and previews on the card |
+| **Preview / Review (GLB)** | GLB | Small file for someone to look at |
+| **Source Hand-off (FBX)** | FBX | Modifiers left unapplied, for another artist |
+
+Adjust anything and hit **+** to save your own named preset. They live as JSON
+in Blender's config directory, so they survive reinstalling the extension.
+
+#### Why the Unreal preset is set up the way it is
+
+Each value fixes a specific, well-known failure importing Blender output into UE:
+
+- **Smoothing = Face** — with smoothing off, Unreal warns on every import and
+  falls back to flat shading.
+- **Tangent Space on** — without baked tangents, normal maps light incorrectly.
+- **Leaf Bones off** — Unreal imports Blender's leaf bones as real bones and
+  they clutter the skeleton.
+- **Forward −Z, Up Y** — the FBX standard axes Unreal expects. Changing these
+  is what produces the classic 90° rotation on the imported root.
+- **Embed Textures** — makes the FBX self-contained rather than dependent on
+  paths from whoever exported it.
+- **Scale 1.0** — leave it. FBX carries unit information and Unreal converts
+  metres to centimetres itself; scaling here double-converts.
+
+#### FBX does not preview on the card
+
+The website previews with `<model-viewer>`, which reads glTF only — your own
+stability guard deliberately blocks FBX from the parser. So an FBX attachment
+imports perfectly into Unreal and shows no preview on the card.
+
+**Also Attach GLB Preview** handles that: it uploads a second, lightweight GLB
+alongside the real file, so the card still shows a 3D preview. On by default for
+the FBX presets, off for the glTF ones where it would just be a duplicate.
+
 Descriptions are read-only here — Blender's multi-line text editing is poor
 enough that *Edit in Browser* is the better answer.
 

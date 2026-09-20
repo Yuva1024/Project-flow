@@ -244,3 +244,96 @@ class TestApiUrls(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestExportPresets(unittest.TestCase):
+    """Static checks on export_settings.py.
+
+    That module imports ``bpy`` at module scope, so it cannot be loaded here.
+    Parsing it instead still catches the failure mode that matters: a preset
+    naming a setting that does not exist. ``apply_settings`` skips unknown keys
+    silently, so a typo there would not raise — it would just quietly fail to
+    apply, and someone would ship an FBX to Unreal with smoothing left off.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ast
+
+        with open(
+            os.path.join(_PACKAGE_DIR, "export_settings.py"), encoding="utf-8"
+        ) as handle:
+            source = handle.read()
+        tree = ast.parse(source)
+
+        # Property names declared on the settings PropertyGroup. They are
+        # annotated assignments (``name: BoolProperty(...)``), which is how
+        # Blender expects properties to be declared.
+        cls.declared = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == "ProjectFlowExportSettings":
+                for stmt in node.body:
+                    if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                        cls.declared.add(stmt.target.id)
+
+        # BUILTIN_PRESETS is itself annotated, so it is an AnnAssign too.
+        cls.presets = {}
+        for node in ast.walk(tree):
+            target_name = None
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                target_name = node.target.id
+            elif isinstance(node, ast.Assign):
+                names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                target_name = names[0] if names else None
+
+            if target_name != "BUILTIN_PRESETS" or not isinstance(node.value, ast.Dict):
+                continue
+
+            for key_node, value_node in zip(node.value.keys, node.value.values):
+                if not isinstance(value_node, ast.Dict):
+                    continue
+                for sub_key, sub_val in zip(value_node.keys, value_node.values):
+                    if sub_key.value == "settings" and isinstance(sub_val, ast.Dict):
+                        cls.presets[key_node.value] = {
+                            k.value: v.value
+                            for k, v in zip(sub_val.keys, sub_val.values)
+                            if isinstance(v, ast.Constant)
+                        }
+
+    def test_presets_were_found(self):
+        self.assertTrue(self.declared, "no properties parsed")
+        self.assertGreaterEqual(len(self.presets), 4)
+
+    def test_every_preset_key_is_a_real_property(self):
+        for preset_name, settings in self.presets.items():
+            for key in settings:
+                self.assertIn(
+                    key,
+                    self.declared,
+                    f"preset '{preset_name}' sets '{key}', which is not a declared property",
+                )
+
+    def test_unreal_fbx_preset_avoids_the_known_import_problems(self):
+        # These are the settings that cause visible defects in Unreal when
+        # wrong: no smoothing groups, broken normal maps, junk skeleton bones,
+        # and the classic 90-degree root rotation.
+        settings = self.presets["UNREAL_FBX"]
+
+        self.assertEqual(settings.get("file_format"), "FBX")
+        self.assertEqual(settings.get("mesh_smooth_type"), "FACE")
+        self.assertIs(settings.get("use_tangents"), True)
+        self.assertIs(settings.get("add_leaf_bones"), False)
+        self.assertEqual(settings.get("axis_forward"), "-Z")
+        self.assertEqual(settings.get("axis_up"), "Y")
+        # FBX cannot preview on the card, so the companion GLB must default on.
+        self.assertIs(settings.get("also_attach_preview"), True)
+
+    def test_gltf_presets_do_not_request_a_redundant_preview(self):
+        # A GLB already previews on the card; attaching a second one would just
+        # burn R2 storage, which is capped at 10GB on the free tier.
+        for name in ("UNREAL_GLTF", "PREVIEW_GLB"):
+            self.assertIs(
+                self.presets[name].get("also_attach_preview"),
+                False,
+                f"{name} should not attach a duplicate preview",
+            )

@@ -14,9 +14,11 @@ from __future__ import annotations
 import bpy
 
 from . import (
+    export_settings,
     ops_assets,
     ops_auth,
     ops_boards,
+    ops_presets,
     preferences,
     properties,
     session,
@@ -28,9 +30,11 @@ from . import (
 # read by operators, and the UI must come last because it references everything.
 _modules = (
     properties,
+    export_settings,
     preferences,
     ops_auth,
     ops_assets,
+    ops_presets,
     ops_boards,
     ui,
 )

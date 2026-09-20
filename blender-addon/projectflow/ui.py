@@ -256,6 +256,12 @@ class PROJECTFLOW_PT_card(ProjectFlowPanelBase, Panel):
 
         layout.separator()
 
+        # Shown here as well as in the dialog: knowing which preset is armed
+        # before clicking Attach avoids uploading an FBX when you wanted a GLB.
+        export = context.window_manager.projectflow_export
+        preset_row = layout.row(align=True)
+        preset_row.prop(export, "preset", text="", icon="PRESET")
+
         next_stage = properties.next_section(item.section_id)
         has_selection = len(context.selected_objects) > 0
 

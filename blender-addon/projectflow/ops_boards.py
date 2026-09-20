@@ -15,7 +15,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
-from . import api, properties, session, tasks
+from . import api, export_settings, properties, session, tasks
 from .ops_auth import check_online_access, make_client, report_api_error
 from .preferences import get_preferences
 
@@ -25,22 +25,16 @@ def _props(context=None):
     return getattr(context.window_manager, "projectflow", None)
 
 
-def export_selection(filepath: str) -> int:
-    """Exports the current selection to glTF. Returns the object count.
+def export_selection(filepath: str, settings) -> int:
+    """Exports the current selection using the chosen preset. Returns object count.
 
-    glTF is used because it is what the web viewer renders, so anything uploaded
-    from here previews correctly on the card without a conversion step.
+    Runs on the main thread: reads scene data, which a worker thread must not do.
     """
-    selected = [obj for obj in bpy.context.selected_objects]
+    selected = list(bpy.context.selected_objects)
     if not selected:
         raise RuntimeError("Nothing is selected")
 
-    bpy.ops.export_scene.gltf(
-        filepath=filepath,
-        export_format="GLB",
-        use_selection=True,
-        export_apply=True,
-    )
+    export_settings.export_with_settings(filepath, settings)
     return len(selected)
 
 
@@ -258,31 +252,76 @@ class PROJECTFLOW_OT_attach_selection(Operator):
 
         props = _props(context)
         card = props.active_card()
+        settings = context.window_manager.projectflow_export
+
         if not self.file_name:
             active = context.active_object
             base = (active.name if active else card.title) or "export"
-            self.file_name = f"{base}.glb"
+            self.file_name = f"{base}{settings.extension}"
 
-        return context.window_manager.invoke_props_dialog(self, width=340)
+        # Wider than the other dialogs: this one carries the full export options.
+        return context.window_manager.invoke_props_dialog(self, width=420)
 
     def draw(self, context):
         props = _props(context)
         card = props.active_card()
+        settings = context.window_manager.projectflow_export
         layout = self.layout
-
-        col = layout.column()
-        col.use_property_split = True
-        col.prop(self, "file_name")
 
         box = layout.box()
         box.scale_y = 0.85
         box.label(text=f"Card: {card.title}", icon="BOOKMARKS")
-        box.label(text=f"{len(context.selected_objects)} object(s) selected", icon="OBJECT_DATA")
-
+        box.label(
+            text=f"{len(context.selected_objects)} object(s) selected", icon="OBJECT_DATA"
+        )
         if self.advance:
             nxt = properties.next_section(card.section_id)
             if nxt:
                 box.label(text=f"Then move to: {nxt.get('title')}", icon="FORWARD")
+
+        preset_row = layout.row(align=True)
+        preset_row.prop(settings, "preset", text="")
+        preset_row.operator("projectflow.save_export_preset", text="", icon="ADD")
+        preset_row.operator("projectflow.delete_export_preset", text="", icon="REMOVE")
+
+        col = layout.column()
+        col.use_property_split = True
+        col.prop(self, "file_name")
+        col.prop(settings, "file_format")
+        col.prop(settings, "apply_modifiers")
+        col.prop(settings, "use_triangles")
+        col.prop(settings, "use_tangents")
+        col.prop(settings, "export_materials")
+        col.prop(settings, "export_animations")
+        col.prop(settings, "global_scale")
+
+        if settings.file_format == "FBX":
+            fbx = layout.box()
+            fbx.label(text="FBX / Unreal", icon="EXPORT")
+            sub = fbx.column()
+            sub.use_property_split = True
+            sub.prop(settings, "mesh_smooth_type")
+            sub.prop(settings, "axis_forward")
+            sub.prop(settings, "axis_up")
+            sub.prop(settings, "apply_unit_scale")
+            sub.prop(settings, "bake_space_transform")
+            sub.prop(settings, "embed_textures")
+            sub.prop(settings, "add_leaf_bones")
+            sub.prop(settings, "primary_bone_axis")
+            sub.prop(settings, "secondary_bone_axis")
+        elif settings.file_format in {"GLB", "GLTF_SEPARATE"}:
+            gltf = layout.box()
+            gltf.label(text="glTF", icon="EXPORT")
+            sub = gltf.column()
+            sub.use_property_split = True
+            sub.prop(settings, "gltf_yup")
+
+        # The website previews with <model-viewer>, which reads glTF only. Say so
+        # here rather than letting someone wonder why their card shows no model.
+        if not settings.previews_on_web:
+            warn = layout.box()
+            warn.label(text="This format will not preview on the card", icon="INFO")
+            warn.prop(settings, "also_attach_preview")
 
     def execute(self, context):
         props = _props(context)
@@ -290,20 +329,37 @@ class PROJECTFLOW_OT_attach_selection(Operator):
         if card is None:
             return {"CANCELLED"}
 
-        file_name = (self.file_name or "export.glb").strip()
-        if not file_name.lower().endswith(".glb"):
-            file_name += ".glb"
+        settings = context.window_manager.projectflow_export
+        extension = settings.extension
+
+        file_name = (self.file_name or f"export{extension}").strip()
+        if not file_name.lower().endswith(extension):
+            file_name = f"{os.path.splitext(file_name)[0]}{extension}"
 
         temp_dir = tempfile.mkdtemp(prefix="projectflow-export-")
         export_path = os.path.join(temp_dir, file_name)
 
-        # The export must happen on the main thread: it reads scene data.
+        # Exporting reads scene data, so it must happen on the main thread.
         # Only the upload goes to a worker.
         try:
-            count = export_selection(export_path)
+            count = export_selection(export_path, settings)
         except Exception as exc:  # noqa: BLE001
+            _cleanup_dir(temp_dir)
             self.report({"ERROR"}, f"Export failed: {exc}")
             return {"CANCELLED"}
+
+        # A second, lightweight GLB so the card still shows a 3D preview when
+        # the real attachment is a format the web viewer cannot read.
+        preview_path = None
+        if settings.also_attach_preview and not settings.previews_on_web:
+            candidate = os.path.join(
+                temp_dir, f"{os.path.splitext(file_name)[0]}_preview.glb"
+            )
+            try:
+                export_settings.export_preview_glb(candidate, settings.selected_only)
+                preview_path = candidate
+            except Exception as exc:  # noqa: BLE001 - the main upload still stands
+                print(f"[ProjectFlow] Preview export failed, continuing: {exc}")
 
         client = make_client(context)
         workspace_id = props.workspace_id
@@ -320,6 +376,15 @@ class PROJECTFLOW_OT_attach_selection(Operator):
             result = client.upload_card_attachment(
                 workspace_id, board_id, card_id, export_path
             )
+            if preview_path:
+                # Uploaded after the real file so a preview failure cannot cost
+                # the artist their actual export.
+                try:
+                    client.upload_card_attachment(
+                        workspace_id, board_id, card_id, preview_path
+                    )
+                except api.ApiError as exc:
+                    print(f"[ProjectFlow] Preview upload failed: {exc.message}")
             if should_advance and next_stage:
                 client.move_card(workspace_id, board_id, card_id, next_stage["id"])
             return result
