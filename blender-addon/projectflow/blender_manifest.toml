@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "projectflow"
-version = "0.1.0"
+version = "0.2.0"
 name = "ProjectFlow"
 tagline = "Sync workspace assets and boards into Blender"
 maintainer = "ProjectFlow Team"

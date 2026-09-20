@@ -268,24 +268,32 @@ class PROJECTFLOW_PT_card(ProjectFlowPanelBase, Panel):
         actions = layout.column(align=True)
         actions.scale_y = 1.3
 
+        # Both buttons run the same operator with a different flag. Routing one
+        # of them through a wrapper operator meant its dialog never opened --
+        # Blender cannot invoke a props dialog from inside another operator's
+        # invoke().
         primary = actions.row(align=True)
         primary.enabled = has_selection and not props.busy
         if next_stage:
-            primary.operator(
-                "projectflow.attach_and_advance",
+            op = primary.operator(
+                "projectflow.attach_selection",
                 text=f"Attach & Move to {next_stage.get('title', 'Next')}",
                 icon="EXPORT",
             )
+            op.advance = True
         else:
-            primary.operator(
+            op = primary.operator(
                 "projectflow.attach_selection", text="Attach Selection", icon="EXPORT"
-            ).advance = False
+            )
+            op.advance = False
 
-        secondary = actions.row(align=True)
-        secondary.enabled = has_selection and not props.busy
-        secondary.operator(
-            "projectflow.attach_selection", text="Attach Only", icon="FILE_NEW"
-        ).advance = False
+        if next_stage:
+            secondary = actions.row(align=True)
+            secondary.enabled = has_selection and not props.busy
+            op = secondary.operator(
+                "projectflow.attach_selection", text="Attach Only", icon="FILE_NEW"
+            )
+            op.advance = False
 
         if not has_selection:
             note = layout.row()

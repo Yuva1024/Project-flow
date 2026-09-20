@@ -3,7 +3,8 @@
 The pipeline shape matters here: cards start in the first section and move
 forward through the stages until the last. So the primary action is not "move
 this somewhere" but "I finished my part, here it is, pass it on" — which is what
-``PROJECTFLOW_OT_attach_and_advance`` collapses into one click.
+``PROJECTFLOW_OT_attach_selection`` with ``advance=True`` collapses into one
+click.
 """
 
 from __future__ import annotations
@@ -250,6 +251,10 @@ class PROJECTFLOW_OT_attach_selection(Operator):
         name="Advance after attaching",
         description="Move the card to the next section once the upload finishes",
         default=False,
+        # SKIP_SAVE: Blender remembers operator properties between invocations.
+        # Without this, one "Attach & Move" click would leave the flag set and
+        # the next "Attach Only" would silently advance the card as well.
+        options={"SKIP_SAVE"},
     )
 
     file_name: StringProperty(
@@ -533,32 +538,6 @@ class PROJECTFLOW_OT_attach_selection(Operator):
         return {"FINISHED"}
 
 
-class PROJECTFLOW_OT_attach_and_advance(Operator):
-    """The action this whole panel exists for.
-
-    In a pipeline, finishing your stage and handing the card on are the same
-    event, so they belong behind one button.
-    """
-
-    bl_idname = "projectflow.attach_and_advance"
-    bl_label = "Attach & Advance"
-    bl_description = (
-        "Export the selection, attach it to the card, and move the card to the "
-        "next section"
-    )
-    bl_options = {"REGISTER", "INTERNAL"}
-
-    @classmethod
-    def poll(cls, context):
-        return PROJECTFLOW_OT_attach_selection.poll(context)
-
-    def invoke(self, context, event):
-        return bpy.ops.projectflow.attach_selection("INVOKE_DEFAULT", advance=True)
-
-    def execute(self, context):
-        return bpy.ops.projectflow.attach_selection("INVOKE_DEFAULT", advance=True)
-
-
 class PROJECTFLOW_OT_add_comment(Operator):
     bl_idname = "projectflow.add_comment"
     bl_label = "Post Comment"
@@ -646,7 +625,6 @@ classes = (
     PROJECTFLOW_OT_move_card,
     PROJECTFLOW_OT_advance_card,
     PROJECTFLOW_OT_attach_selection,
-    PROJECTFLOW_OT_attach_and_advance,
     PROJECTFLOW_OT_add_comment,
     PROJECTFLOW_OT_open_card_in_browser,
 )

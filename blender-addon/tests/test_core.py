@@ -337,3 +337,55 @@ class TestExportPresets(unittest.TestCase):
                 False,
                 f"{name} should not attach a duplicate preview",
             )
+
+
+class TestOperatorWiring(unittest.TestCase):
+    """Static guards against two mistakes that silently break the attach dialog.
+
+    Neither shows up as an error at runtime — the export just quietly runs with
+    default settings — so they are worth pinning down here.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(_PACKAGE_DIR, "ops_boards.py"), encoding="utf-8") as fh:
+            cls.ops = fh.read()
+        with open(os.path.join(_PACKAGE_DIR, "ui.py"), encoding="utf-8") as fh:
+            cls.ui = fh.read()
+
+    def test_no_operator_invokes_another_operator_from_invoke(self):
+        # Blender cannot open a props dialog from inside another operator's
+        # invoke(); the inner invoke_props_dialog is skipped and execute() runs
+        # immediately with defaults. This is what hid the export options.
+        import ast
+
+        tree = ast.parse(self.ops)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or node.name != "invoke":
+                continue
+            body = ast.get_source_segment(self.ops, node) or ""
+            self.assertNotIn(
+                "INVOKE_DEFAULT",
+                body,
+                "an invoke() calls another operator with INVOKE_DEFAULT; its "
+                "dialog will not open",
+            )
+
+    def test_advance_flag_does_not_persist_between_clicks(self):
+        # Blender remembers operator properties between invocations. Without
+        # SKIP_SAVE, one "Attach & Move" leaves the flag set and the next
+        # "Attach Only" silently advances the card too.
+        start = self.ops.index("advance: BoolProperty(")
+        block = self.ops[start:start + 500]
+        self.assertIn("SKIP_SAVE", block)
+
+    def test_panel_sets_advance_explicitly_on_every_attach_button(self):
+        # Relying on the default would reintroduce the persistence bug.
+        buttons = self.ui.count('"projectflow.attach_selection"')
+        assignments = self.ui.count("op.advance =")
+        self.assertGreater(buttons, 0)
+        self.assertEqual(
+            buttons,
+            assignments,
+            "every attach button must set advance explicitly",
+        )
