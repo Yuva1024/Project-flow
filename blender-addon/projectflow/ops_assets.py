@@ -206,6 +206,62 @@ class PROJECTFLOW_OT_open_cache_folder(Operator):
         return {"FINISHED"}
 
 
+class PROJECTFLOW_OT_open_asset_browser(Operator):
+    """Turns an editor into an Asset Browser showing the ProjectFlow library.
+
+    Drag-and-drop into the viewport is a feature of the Asset Browser
+    specifically — Blender does not support dragging out of a custom sidebar
+    panel — so getting there quickly is the difference between the library
+    feeling built-in and feeling hidden.
+    """
+
+    bl_idname = "projectflow.open_asset_browser"
+    bl_label = "Open Asset Browser"
+    bl_description = "Show the ProjectFlow library in an Asset Browser, ready to drag from"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    def execute(self, context):
+        screen = context.window.screen
+
+        # Prefer an Asset Browser that is already open.
+        target = next((area for area in screen.areas if area.ui_type == "ASSETS"), None)
+
+        if target is None:
+            # Otherwise take over the largest area that is not the 3D viewport
+            # the user is working in — usually the timeline or an outliner.
+            candidates = [
+                area
+                for area in screen.areas
+                if area.type not in {"VIEW_3D", "PROPERTIES", "OUTLINER"}
+            ]
+            if not candidates:
+                candidates = [area for area in screen.areas if area.type != "VIEW_3D"]
+            if not candidates:
+                self.report(
+                    {"WARNING"},
+                    "No area to convert. Split the window and set an editor to Asset Browser.",
+                )
+                return {"CANCELLED"}
+
+            target = max(candidates, key=lambda a: a.width * a.height)
+            target.ui_type = "ASSETS"
+
+        space = target.spaces.active
+        try:
+            space.params.asset_library_reference = LIBRARY_NAME
+        except (AttributeError, TypeError):
+            # The library is only selectable once it is registered and Blender
+            # has indexed it; a sync will make it appear.
+            self.report(
+                {"INFO"},
+                "Asset Browser opened. Choose the ProjectFlow library from its header.",
+            )
+            return {"FINISHED"}
+
+        self.report({"INFO"}, "Drag assets from here into the viewport.")
+        return {"FINISHED"}
+
+
 class PROJECTFLOW_OT_load_workspaces(Operator):
     bl_idname = "projectflow.load_workspaces"
     bl_label = "Load Workspaces"
@@ -255,6 +311,7 @@ class PROJECTFLOW_OT_load_workspaces(Operator):
 
 classes = (
     PROJECTFLOW_OT_sync_assets,
+    PROJECTFLOW_OT_open_asset_browser,
     PROJECTFLOW_OT_register_library,
     PROJECTFLOW_OT_clear_cache,
     PROJECTFLOW_OT_open_cache_folder,

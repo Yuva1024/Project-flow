@@ -139,8 +139,14 @@ class PROJECTFLOW_PT_assets(ProjectFlowPanelBase, Panel):
         col.enabled = not props.busy
         col.operator("projectflow.sync_assets", icon="IMPORT")
 
+        # Drag-and-drop lives in the Asset Browser, not in this panel, so the
+        # fastest possible route there matters more than it looks.
+        col.operator(
+            "projectflow.open_asset_browser", text="Browse Assets", icon="ASSET_MANAGER"
+        )
+
         row = layout.row(align=True)
-        row.operator("projectflow.register_library", text="Register Library", icon="ASSET_MANAGER")
+        row.operator("projectflow.register_library", text="Register Library", icon="FILE_REFRESH")
         row.operator("projectflow.open_cache_folder", text="", icon="FILE_FOLDER")
 
         from . import cache as cache_mod
@@ -152,7 +158,7 @@ class PROJECTFLOW_PT_assets(ProjectFlowPanelBase, Panel):
             text=f"Cache: {cache_mod.format_size(asset_cache.size_bytes())}",
             icon="DISK_DRIVE",
         )
-        box.label(text="Assets appear in the Asset Browser", icon="INFO")
+        box.label(text="Drag assets from the browser into the scene", icon="INFO")
 
 
 class PROJECTFLOW_PT_boards(ProjectFlowPanelBase, Panel):

@@ -98,13 +98,134 @@ def apply_metadata(datablock, job: dict) -> None:
                 pass
 
 
-def generate_preview(datablock) -> bool:
-    """Attempts a thumbnail. Best-effort.
+PREVIEW_SIZE = 256
 
-    Preview rendering wants a draw context, which a ``--background`` Blender
-    does not reliably have. When it fails the asset still works — it just shows
-    a generic icon in the browser — so this never fails the build.
+
+def frame_camera(camera, objects) -> None:
+    """Points the camera at the objects and pulls back far enough to fit them.
+
+    ``view3d.camera_to_view_selected`` would do this in one call but needs a 3D
+    viewport, which a background Blender has none of. So the framing is computed
+    from the world-space bounding box instead.
     """
+    import math
+
+    from mathutils import Vector
+
+    corners = []
+    for obj in objects:
+        if not hasattr(obj, "bound_box"):
+            continue
+        for corner in obj.bound_box:
+            corners.append(obj.matrix_world @ Vector(corner))
+
+    if not corners:
+        corners = [Vector((-1, -1, -1)), Vector((1, 1, 1))]
+
+    lo = Vector((min(c.x for c in corners), min(c.y for c in corners), min(c.z for c in corners)))
+    hi = Vector((max(c.x for c in corners), max(c.y for c in corners), max(c.z for c in corners)))
+
+    center = (lo + hi) / 2.0
+    radius = max((hi - lo).length / 2.0, 1e-4)
+
+    # Three-quarter view: the angle Blender's own asset previews use, and the
+    # one that reads best for props at thumbnail size.
+    direction = Vector((1.0, -1.2, 0.8)).normalized()
+
+    half_fov = camera.data.angle / 2.0
+    distance = (radius / math.tan(half_fov)) * 1.35  # margin so nothing clips
+
+    camera.location = center + direction * distance
+    # Point -Z (the camera's forward axis) at the centre of the bounding box.
+    camera.rotation_euler = (center - camera.location).to_track_quat("-Z", "Y").to_euler()
+
+    camera.data.clip_start = max(distance - radius * 4, 0.001)
+    camera.data.clip_end = distance + radius * 8
+
+
+def render_preview(datablock, objects) -> bool:
+    """Renders a thumbnail and attaches it to the asset.
+
+    ``ed.lib_id_generate_preview`` is the obvious call, but it depends on a draw
+    context that ``--background`` does not reliably provide — which is why every
+    asset was arriving with a generic icon. An explicit render sidesteps that
+    entirely.
+
+    Workbench is used on purpose: it needs no scene lighting, renders in
+    milliseconds, and produces the solid-shaded look Blender's own asset
+    previews already have. EEVEE would want a GPU context that headless runs
+    cannot count on.
+    """
+    import tempfile
+
+    scene = bpy.context.scene
+
+    camera_data = bpy.data.cameras.new("PF_PreviewCam")
+    camera = bpy.data.objects.new("PF_PreviewCam", camera_data)
+    scene.collection.objects.link(camera)
+    scene.camera = camera
+
+    frame_camera(camera, objects)
+
+    render = scene.render
+    render.engine = "BLENDER_WORKBENCH"
+    render.resolution_x = PREVIEW_SIZE
+    render.resolution_y = PREVIEW_SIZE
+    render.resolution_percentage = 100
+    render.film_transparent = True
+    render.image_settings.file_format = "PNG"
+    render.image_settings.color_mode = "RGBA"
+
+    shading = scene.display.shading
+    shading.light = "STUDIO"
+    shading.color_type = "MATERIAL"
+    shading.show_shadows = True
+    shading.show_cavity = True
+
+    out_dir = tempfile.mkdtemp(prefix="pf-preview-")
+    out_path = os.path.join(out_dir, "preview.png")
+    render.filepath = out_path
+
+    image = None
+    try:
+        bpy.ops.render.render(write_still=True)
+        if not os.path.exists(out_path):
+            return False
+
+        image = bpy.data.images.load(out_path)
+        if tuple(image.size) != (PREVIEW_SIZE, PREVIEW_SIZE):
+            return False
+
+        preview = datablock.preview_ensure()
+        preview.image_size = (PREVIEW_SIZE, PREVIEW_SIZE)
+
+        pixels = [0.0] * (PREVIEW_SIZE * PREVIEW_SIZE * 4)
+        image.pixels.foreach_get(pixels)
+        preview.image_pixels_float.foreach_set(pixels)
+        return True
+
+    except Exception:  # noqa: BLE001 - a missing thumbnail must not fail the build
+        return False
+
+    finally:
+        if image is not None:
+            bpy.data.images.remove(image)
+        # The camera must not end up inside the asset that gets written out.
+        scene.camera = None
+        bpy.data.objects.remove(camera, do_unlink=True)
+        bpy.data.cameras.remove(camera_data)
+        try:
+            os.remove(out_path)
+            os.rmdir(out_dir)
+        except OSError:
+            pass
+
+
+def generate_preview(datablock, objects) -> bool:
+    """Produces a thumbnail, preferring the render and falling back to the operator."""
+    if render_preview(datablock, objects):
+        return True
+
     try:
         with bpy.context.temp_override(id=datablock):
             bpy.ops.ed.lib_id_generate_preview()
@@ -148,7 +269,8 @@ def build_one(job: dict) -> dict:
 
     apply_metadata(datablock, job)
 
-    has_preview = generate_preview(datablock) if job.get("previews", True) else False
+    # Rendered before the write, so the thumbnail is baked into the .blend.
+    has_preview = generate_preview(datablock, created) if job.get("previews", True) else False
 
     os.makedirs(os.path.dirname(destination), exist_ok=True)
 

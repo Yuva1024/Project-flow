@@ -70,7 +70,22 @@ What a sync does:
 4. Builds a `.blend` wrapper per asset in a background Blender process.
 5. Removes wrappers for assets deleted server-side.
 
-Synced assets show up in the **Asset Browser** under the **ProjectFlow** library.
+### Browsing and dragging assets in
+
+Thumbnails and drag-and-drop are the **Asset Browser**, Blender's own editor —
+the add-on's job is to fill it. Click **Browse Assets** in the sidebar and it
+converts an editor for you, or set one up by hand:
+
+1. Split the window, or change an existing editor's type (the icon at the far
+   left of its header).
+2. Choose **Asset Browser**.
+3. In its header, pick the **ProjectFlow** library.
+
+Then **drag any thumbnail straight into the 3D viewport** to place it.
+
+Dragging is only supported *from the Asset Browser* — Blender has no API for
+dragging out of a custom sidebar panel — which is why the add-on routes you
+there rather than reimplementing a grid that could not drop anywhere.
 
 ### Why it is fast on repeat runs
 
@@ -84,10 +99,18 @@ does.
 
 ### Thumbnails
 
-Generated locally while building each asset. Preview rendering needs a draw
-context that a background Blender does not reliably have, so some assets may
-show a generic icon. They still work — turn previews off in Preferences if
-builds are slow.
+Each asset is rendered to a 256×256 thumbnail while it is built, and the image
+is baked into the `.blend` so it shows up the moment the browser indexes it.
+
+The render uses the **Workbench** engine with a camera framed automatically to
+the asset's bounding box. Workbench needs no scene lighting, renders in
+milliseconds, and matches the solid-shaded look Blender's own asset previews
+have. It was chosen over `ed.lib_id_generate_preview`, which depends on a draw
+context a background Blender does not reliably provide — that call is kept only
+as a fallback.
+
+Turn previews off in Preferences if you want faster syncs and don't mind
+generic icons.
 
 ---
 
