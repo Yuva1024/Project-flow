@@ -8,24 +8,25 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(uuid())
+  id               String                @id @default(uuid())
   name             String
-  email            String            @unique
+  email            String                @unique
   passwordHash     String
   avatarUrl        String?
-  isAdmin          Boolean           @default(false)
+  isAdmin          Boolean               @default(false)
   resetToken       String?
   resetTokenExpiry DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  workspacesOwned  Workspace[]       @relation("WorkspaceOwner")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  workspacesOwned  Workspace[]           @relation("WorkspaceOwner")
   workspaceMembers WorkspaceMember[]
-  cardsCreated     Card[]            @relation("CardCreator")
+  cardsCreated     Card[]                @relation("CardCreator")
   comments         Comment[]
   cardMembers      CardMember[]
   activityLogs     ActivityLog[]
   notifications    Notification[]
   assets           Asset[]
+  accessTokens     PersonalAccessToken[]
 }
 
 model Workspace {
@@ -229,6 +230,23 @@ model Notification {
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
+}
+
+model PersonalAccessToken {
+  id         String    @id @default(uuid())
+  userId     String
+  /// SHA-256 of the token. The plaintext is shown once at creation and never stored.
+  tokenHash  String    @unique
+  /// First characters of the token, for identifying a row in the UI without revealing it.
+  prefix     String
+  label      String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
 }
 
 model Whiteboard {

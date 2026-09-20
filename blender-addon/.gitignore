@@ -1,0 +1,5 @@
+# Bundled wheels are downloaded locally, not committed
+wheels/
+*.zip
+__pycache__/
+*.pyc

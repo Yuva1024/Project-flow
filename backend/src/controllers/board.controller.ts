@@ -111,6 +111,19 @@ export const getBoardById = async (req: AuthRequest, res: Response) => {
                     include: {
                         cards: {
                             orderBy: { position: 'asc' },
+                            // Labels and members are included so a client can render a
+                            // full card list from this one response. Without them the
+                            // Blender addon would need a request per card, which the
+                            // global rate limiter would reject on a busy board.
+                            include: {
+                                labels: { include: { label: true } },
+                                members: {
+                                    include: {
+                                        user: { select: { id: true, name: true, avatarUrl: true } },
+                                    },
+                                },
+                                _count: { select: { attachments: true, comments: true } },
+                            },
                         },
                     },
                 },

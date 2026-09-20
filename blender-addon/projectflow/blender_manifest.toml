@@ -1,0 +1,38 @@
+schema_version = "1.0.0"
+
+id = "projectflow"
+version = "0.1.0"
+name = "ProjectFlow"
+tagline = "Sync workspace assets and boards into Blender"
+maintainer = "ProjectFlow Team"
+
+type = "add-on"
+
+website = "https://github.com/Yuva1024/Project-flow"
+
+tags = ["Pipeline", "Import-Export", "Object"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# network: talks to the ProjectFlow API and downloads asset files from R2 storage.
+# files:   maintains a local asset cache and writes .blend files for the Asset Browser.
+[permissions]
+network = "Fetch workspace assets, boards and cards from your ProjectFlow server"
+files = "Cache downloaded assets and build .blend files for the Asset Browser"
+
+# Optional: drop keyring wheels here to store the access token in the OS credential
+# store instead of a permission-restricted config file. See README for the exact
+# download command. The add-on works without them.
+# wheels = [
+#   "./wheels/keyring-25.2.1-py3-none-any.whl",
+#   "./wheels/jaraco.classes-3.4.0-py3-none-any.whl",
+# ]
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "*.zip",
+]
