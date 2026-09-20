@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { 
     Folder, FolderPlus, Tag, Search, Upload, Grid3x3, List, 
-    Trash2, MoreHorizontal, File, Image as ImageIcon, Music, Video, Box, Plus
+    Trash2, MoreHorizontal, File, Image as ImageIcon, Music, Video, Box, Plus, GitBranch
 } from 'lucide-react';
 
 interface AssetLibraryProps {
@@ -293,7 +293,7 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                             style={{ paddingLeft: 36, height: 36, borderRadius: 'var(--radius)' }} 
                         />
                     </div>
-                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
                         <button onClick={() => setViewMode('grid')} className="btn-ghost" style={{ padding: 8, background: viewMode === 'grid' ? 'var(--bg-active)' : 'transparent' }}>
                             <Grid3x3 size={16} />
                         </button>

@@ -3,8 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { X, Download, Trash2, File, Image as ImageIcon, Music, Video, Box, Tag, Plus } from 'lucide-react';
-
+import { X, Download, Trash2, File, Image as ImageIcon, Music, Video, Box, Tag, Plus, GitBranch } from 'lucide-react';
 
 interface AssetDetailPanelProps {
     assetId: string;
@@ -109,6 +108,12 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
 
     const category = asset ? getMimeCategory(asset.mimeType, asset.fileName) : 'other';
     const fileUrl = asset ? (asset.fileUrl || asset.url || '') : '';
+    const isGlbOrGltf = Boolean(
+        asset?.fileName?.toLowerCase().endsWith('.glb') ||
+        asset?.fileName?.toLowerCase().endsWith('.gltf') ||
+        asset?.mimeType === 'model/gltf-binary' ||
+        asset?.mimeType === 'model/gltf+json'
+    );
 
     const renderPreview = () => {
         if (!asset) return null;
@@ -116,8 +121,49 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
             return <img src={fileUrl} alt={asset.fileName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />;
         }
         if (category === '3d') {
-            const ModelViewer = 'model-viewer' as any;
-            return <ModelViewer src={fileUrl} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
+            if (isGlbOrGltf) {
+                const ModelViewer = 'model-viewer' as any;
+                return <ModelViewer src={fileUrl} auto-rotate camera-controls shadow-intensity="1" style={{ width: '100%', height: '100%' }} />;
+            }
+            const ext = asset.fileName?.split('.').pop()?.toUpperCase() || '3D';
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '24px 20px', gap: '12px', height: '100%', width: '100%' }}>
+                    <div style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 14,
+                        background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))',
+                        border: '1px solid rgba(99, 102, 241, 0.35)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--accent, #818cf8)',
+                        boxShadow: '0 8px 20px rgba(0, 0, 0, 0.25)'
+                    }}>
+                        <Box size={28} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                        <span style={{
+                            padding: '2px 8px',
+                            fontSize: 10,
+                            fontWeight: 800,
+                            borderRadius: 6,
+                            background: 'rgba(99, 102, 241, 0.2)',
+                            color: 'var(--accent, #818cf8)',
+                            border: '1px solid rgba(99, 102, 241, 0.35)',
+                            letterSpacing: '0.05em'
+                        }}>
+                            {ext} 3D ASSET
+                        </span>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', maxWidth: 260, wordBreak: 'break-all' }}>
+                            {asset.fileName}
+                        </div>
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, maxWidth: 280, lineHeight: 1.4 }}>
+                            Direct web preview is supported for glTF/GLB models. You can download this file to view or edit it in 3D software.
+                        </p>
+                    </div>
+                </div>
+            );
         }
         if (category === 'audio') {
             return <audio controls src={fileUrl} style={{ width: '100%', marginTop: 'auto', marginBottom: 'auto' }} />;
@@ -229,10 +275,10 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
 
                 {/* Actions */}
                 <div style={{ padding: 24, borderTop: '1px solid var(--border)', display: 'flex', gap: 12 }}>
-                    <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={asset.fileName} className="btn-secondary" style={{ flex: 1, textDecoration: 'none' }}>
+                    <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={asset.fileName} className="btn-secondary" style={{ flex: 1, textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         <Download size={14} /> Download
                     </a>
-                    <button onClick={handleDelete} className="btn-danger">
+                    <button onClick={handleDelete} className="btn-danger" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         <Trash2 size={14} /> Delete
                     </button>
                 </div>

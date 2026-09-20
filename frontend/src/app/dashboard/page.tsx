@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useBoardStore } from "@/store/board";
 import toast from "react-hot-toast";
-import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield, Menu, Upload } from "lucide-react";
+import { LayoutDashboard, Plus, LogOut, Users, ChevronRight, Loader2, FolderKanban, X, Sun, Moon, Shield, Menu, Upload, GitBranch, Key } from "lucide-react";
 import WorkspaceMembersModal from "@/components/WorkspaceMembersModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
 import CommandPalette from "@/components/CommandPalette";
@@ -676,13 +676,13 @@ export default function DashboardPage() {
                 {showProfileModal && user && (
                     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
                         <div className="overlay-backdrop" onClick={() => setShowProfileModal(false)} />
-                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 460, width: "100%", border: "1px solid var(--border-active)" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 500, width: "100%", border: "1px solid var(--border-active)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px 14px", borderBottom: "1px solid var(--border)" }}>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>My Settings</h3>
                                 <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--text-muted)", display: "flex" }}><X size={18} /></button>
                             </div>
-                            
-                            <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: 24 }}>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: 24, padding: 24, maxHeight: "70vh", overflowY: "auto" }}>
                                 {/* Update Profile Form */}
                                 <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                                     <h4 style={{ fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Update Profile</h4>

@@ -5,6 +5,11 @@ import { uploadAssetFile, deleteFile } from '../utils/s3';
 import { uploadLimiter } from '../middleware/rateLimit.middleware';
 import multer from 'multer';
 import { z } from 'zod';
+import {
+    sendAssetToDiversion,
+    getDiversionRepositories,
+    getDiversionFolders,
+} from '../controllers/asset.controller';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth);
@@ -546,5 +551,10 @@ router.delete('/:assetId/link/:cardId', async (req: AuthRequest, res: any) => {
         res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+// Diversion Version Control Integration
+router.post('/diversion/repos', getDiversionRepositories);
+router.post('/diversion/folders', getDiversionFolders);
+router.post('/:assetId/send-to-diversion', sendAssetToDiversion);
 
 export default router;

@@ -177,12 +177,14 @@ model Attachment {
 
 model ActivityLog {
   id        String   @id @default(uuid())
-  cardId    String
+  cardId    String?
+  assetId   String?
   userId    String
   action    String
   details   String?
   createdAt DateTime @default(now())
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  card      Card?    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  asset     Asset?   @relation(fields: [assetId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -235,6 +237,7 @@ model Asset {
   uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
   tags         AssetTagAssignment[]
   cardLinks    CardAsset[]
+  activityLogs ActivityLog[]
 }
 
 model AssetTag {
