@@ -58,7 +58,16 @@ app.use(cors({
 
 // Response compression + body parsing limits
 app.use(compression());
-app.use(express.json({ limit: '1mb' }));
+// Whiteboard saves carry a full tldraw snapshot, which outgrows 1 MB on a busy
+// board. Rather than raise the limit for every route — which widens the surface
+// for oversized-body abuse everywhere — only that one route gets headroom.
+// Images are uploaded to storage separately, so snapshots hold shapes only.
+const jsonDefault = express.json({ limit: '1mb' });
+const jsonWhiteboard = express.json({ limit: '5mb' });
+const WHITEBOARD_SAVE = /^\/api\/workspaces\/[^/]+\/whiteboards\/[^/]+\/?$/;
+app.use((req: Request, res: Response, next: NextFunction) =>
+    (req.method === 'PATCH' && WHITEBOARD_SAVE.test(req.path) ? jsonWhiteboard : jsonDefault)(req, res, next),
+);
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
 // HTTP Parameter Pollution protection

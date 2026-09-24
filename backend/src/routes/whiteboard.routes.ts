@@ -25,7 +25,17 @@ const createElementSchema = z.object({
 
 const updateBoardSchema = z.object({
     name: z.string().min(1).max(120).optional(),
-    elements: z.array(z.any()).max(5000).optional(),
+    // tldraw's getSnapshot() returns an object — { document, session } — but
+    // this used to require an array, so every autosave was rejected with a 400.
+    // The client only logged that to the console, so no whiteboard ever saved.
+    // The array form is still accepted for rows created before this fix, whose
+    // default is [].
+    elements: z
+        .union([
+            z.looseObject({ document: z.record(z.string(), z.any()) }),
+            z.array(z.any()).max(5000),
+        ])
+        .optional(),
 });
 
 /** GET /api/workspaces/:workspaceId/whiteboards — list whiteboards */
