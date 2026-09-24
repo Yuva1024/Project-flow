@@ -36,7 +36,7 @@ exchanges them for a session token, immediately mints a named access token, then
 discards both the password and the session token. The device name you choose is
 how this machine appears in your token list on the website.
 
-**From the website** — create a token under Account → Access Tokens, then use
+**From the website** — create a token under **profile icon → My Settings → Access Tokens**, then use
 *Paste an Access Token* in Blender.
 
 Tokens do not expire and can be revoked individually from the website, so a lost

@@ -82,7 +82,7 @@ def sign_in() -> bool:
     token = _prompt_text(
         "Sign in to ProjectFlow",
         "Paste an access token (starts with pf_).\n"
-        "Create one under Account > Access Tokens on the website.",
+        "On the website: profile icon (bottom of sidebar) > My Settings > Access Tokens.",
     )
     if not token:
         return False

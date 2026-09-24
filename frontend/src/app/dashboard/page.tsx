@@ -12,6 +12,7 @@ import CommandPalette from "@/components/CommandPalette";
 import AssetLibrary from "@/components/AssetLibrary";
 import AssetDetailPanel from "@/components/AssetDetailPanel";
 import { useTheme } from "@/hooks/useTheme";
+import AccessTokensSection from "@/components/AccessTokensSection";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -712,6 +713,13 @@ export default function DashboardPage() {
                                     </div>
                                     <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end", padding: "8px 16px", fontSize: 12 }}>Change Password</button>
                                 </form>
+
+                                <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
+
+                                {/* Tokens for the Blender add-on and Unreal plugin. Those
+                                    tools cannot use the session JWT: it expires in seven days
+                                    and cannot be revoked. */}
+                                <AccessTokensSection />
                             </div>
                         </motion.div>
                     </motion.div>

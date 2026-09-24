@@ -21,7 +21,7 @@ engine version, and installing it is copying a folder.
 ## Sign in
 
 **ProjectFlow → Sign In…** and paste a personal access token. Create one on the
-website under Account → Access Tokens.
+website: click your **profile icon** at the bottom of the sidebar → **My Settings** → **Access Tokens**.
 
 A token rather than a password: it can be revoked from the website without
 touching your account, and the plugin never handles a credential you use

@@ -193,7 +193,7 @@ class PROJECTFLOW_OT_paste_token(Operator):
         layout.prop(self, "token")
         info = layout.box()
         info.scale_y = 0.8
-        info.label(text="Create one under Account > Access Tokens on the website.")
+        info.label(text="Website: profile icon > My Settings > Access Tokens.")
 
     def execute(self, context):
         token = (self.token or "").strip()
