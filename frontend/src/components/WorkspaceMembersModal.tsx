@@ -60,7 +60,7 @@ export default function WorkspaceMembersModal({ workspaceId, workspaceName, onCl
                 initial={{ opacity: 0, scale: 0.96, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 10 }}
-                transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                transition={{ type: "spring", bounce: 0, duration: 0.2 }}
             >
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>

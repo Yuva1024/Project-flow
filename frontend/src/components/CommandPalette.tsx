@@ -102,7 +102,7 @@ export default function CommandPalette() {
                         initial={{ opacity: 0, y: -8, scale: 0.985 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -8, scale: 0.985 }}
-                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.2 }}
                     >
                         <div className="cmdk-input-row">
                             {searching ? <Loader2 size={15} className="spinner" style={{ color: "var(--accent)" }} /> : <Search size={15} style={{ color: "var(--text-muted)" }} />}

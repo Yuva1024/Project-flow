@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import api from '@/lib/api';
+import { useModelViewer } from "@/hooks/useModelViewer";
 import toast from 'react-hot-toast';
 import { X, Download, Trash2, File, Image as ImageIcon, Music, Video, Box, Tag, Plus, GitBranch } from 'lucide-react';
 
@@ -42,6 +43,8 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
     // screen ever opened this modal, so the feature was unreachable.
     const [showDiversion, setShowDiversion] = useState(false);
     const [asset, setAsset] = useState<any>(null);
+    // Loads the ~1 MB model-viewer bundle only when this asset is a model.
+    useModelViewer(/\.(glb|gltf)$/i.test(asset?.fileName || ""));
     const [tags, setTags] = useState<any[]>([]); // All workspace tags
     const [loading, setLoading] = useState(true);
     const [showTagDropdown, setShowTagDropdown] = useState(false);
@@ -187,7 +190,7 @@ export default function AssetDetailPanel({ assetId, workspaceId, onClose }: Asse
                 initial={{ x: 440 }}
                 animate={{ x: 0 }}
                 exit={{ x: 440 }}
-                transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                transition={{ type: "spring", bounce: 0, duration: 0.2 }}
                 style={{ position: 'fixed', right: 0, top: 0, height: '100vh', width: 440, background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)', zIndex: 50, display: 'flex', flexDirection: 'column' }}
             >
                 {/* Header */}

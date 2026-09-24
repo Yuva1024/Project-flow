@@ -16,7 +16,11 @@ import { useTheme } from "@/hooks/useTheme";
 /* ---- Card Item ---- */
 const CardItem = memo(function CardItem({ card, index, onClick, onDelete, isDragDisabled }: { card: Card; index: number; onClick: (card: Card) => void; onDelete: (cardId: string) => void; isDragDisabled?: boolean }) {
     const pColors: Record<string, string> = { URGENT: "#ef4444", HIGH: "#f59e0b", MEDIUM: "#6366f1", LOW: "#10b981" };
-    const overdue = !!card.dueDate && new Date(card.dueDate).getTime() < Date.now();
+    // Read the clock once per mount via a lazy initialiser rather than on every
+    // render: calling Date.now() in render is impure, and on a memoised card it
+    // meant the overdue badge could silently go stale.
+    const [now] = useState(() => Date.now());
+    const overdue = !!card.dueDate && new Date(card.dueDate).getTime() < now;
     return (
         <Draggable draggableId={card.id} index={index} isDragDisabled={isDragDisabled}>
             {(provided, snapshot) => (
@@ -108,25 +112,27 @@ const CardItem = memo(function CardItem({ card, index, onClick, onDelete, isDrag
 });
 
 /* ---- List Column ---- */
-const ListColumn = memo(function ListColumn({ list, workspaceId, boardId, onCardClick, onRefresh, onDeleteCard, isDragDisabled }: {
-    list: List; workspaceId: string; boardId: string; onCardClick: (card: Card) => void; onRefresh: () => void; onDeleteCard: (cardId: string) => void; isDragDisabled?: boolean;
+const ListColumn = memo(function ListColumn({ list, workspaceId, boardId, onCardClick, onDeleteCard, isDragDisabled }: {
+    list: List; workspaceId: string; boardId: string; onCardClick: (card: Card) => void; onDeleteCard: (cardId: string) => void; isDragDisabled?: boolean;
 }) {
     const [showAdd, setShowAdd] = useState(false);
     const [title, setTitle] = useState("");
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitle, setEditTitle] = useState(list.title);
-    const { updateList, deleteList } = useBoardStore();
+    const { updateList, deleteList, addCard: addCardToList } = useBoardStore();
 
     const addCard = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!title.trim()) return;
-        try { 
-            await api.post(`/workspaces/${workspaceId}/boards/${boardId}/lists/${list.id}/cards`, { title: title.trim() }); 
-            setTitle(""); 
-            setShowAdd(false); 
-            onRefresh(); 
-        } catch { 
-            toast.error("Failed to add card"); 
+        const value = title.trim();
+        // Clear the field straight away so the next card can be typed while this
+        // one is saving; put the text back if it fails.
+        setTitle("");
+        try {
+            await addCardToList(workspaceId, boardId, list.id, value);
+        } catch {
+            setTitle(value);
+            toast.error("Failed to add card");
         }
     };
 
@@ -135,12 +141,13 @@ const ListColumn = memo(function ListColumn({ list, workspaceId, boardId, onCard
             setIsEditingTitle(false);
             return;
         }
+        // The store renames it on screen immediately and reverts on failure, so
+        // the editor can close now rather than waiting on the network.
+        setIsEditingTitle(false);
         try {
             await updateList(workspaceId, boardId, list.id, editTitle.trim());
-            setIsEditingTitle(false);
-            toast.success("List renamed");
-            onRefresh();
         } catch {
+            setEditTitle(list.title);
             toast.error("Failed to rename list");
         }
     };
@@ -150,7 +157,6 @@ const ListColumn = memo(function ListColumn({ list, workspaceId, boardId, onCard
         try {
             await deleteList(workspaceId, boardId, list.id);
             toast.success("List deleted");
-            onRefresh();
         } catch {
             toast.error("Failed to delete list");
         }
@@ -267,7 +273,7 @@ export default function BoardPage() {
     const wId = params.workspaceId as string;
     const bId = params.boardId as string;
     const { token, loadUser, isLoading: authLoading } = useAuthStore();
-    const { currentBoard, fetchBoard, reorderCards, reorderLists, updateBoard, deleteBoard, isLoading } = useBoardStore();
+    const { currentBoard, fetchBoard, reorderCards, reorderLists, updateBoard, deleteBoard, addList: addListToBoard, removeCard, isLoading } = useBoardStore();
     const [selectedCard, setSelectedCard] = useState<Card | null>(null);
     const [showAddList, setShowAddList] = useState(false);
     const [listTitle, setListTitle] = useState("");
@@ -347,13 +353,15 @@ export default function BoardPage() {
     const addList = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!listTitle.trim()) return;
-        try { 
-            await api.post(`/workspaces/${wId}/boards/${bId}/lists`, { title: listTitle.trim() }); 
-            setListTitle(""); 
-            setShowAddList(false); 
-            refresh(); 
-        } catch { 
-            toast.error("Failed to create list"); 
+        const value = listTitle.trim();
+        setListTitle("");
+        setShowAddList(false);
+        try {
+            await addListToBoard(wId, bId, value);
+        } catch {
+            setListTitle(value);
+            setShowAddList(true);
+            toast.error("Failed to create list");
         }
     };
 
@@ -384,13 +392,12 @@ export default function BoardPage() {
     const handleDeleteCard = useCallback(async (cardId: string) => {
         if (!confirm("Are you sure you want to delete this card?")) return;
         try {
-            await api.delete(`/workspaces/${wId}/boards/${bId}/cards/${cardId}`);
+            await removeCard(wId, bId, cardId);
             toast.success("Card deleted");
-            refresh();
         } catch {
             toast.error("Failed to delete card");
         }
-    }, [wId, bId, refresh]);
+    }, [wId, bId, removeCard]);
 
     if (authLoading || isLoading || !currentBoard) {
         return (
@@ -506,7 +513,6 @@ export default function BoardPage() {
                                                 workspaceId={wId}
                                                 boardId={bId}
                                                 onCardClick={handleCardClick}
-                                                onRefresh={refresh}
                                                 onDeleteCard={handleDeleteCard}
                                                 isDragDisabled={filtersActive}
                                             />

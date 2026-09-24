@@ -606,11 +606,13 @@ class PROJECTFLOW_OT_open_card_in_browser(Operator):
         props = _props(context)
         prefs = get_preferences(context)
 
-        # The web app is a separate deployment from the API, so derive the site
-        # URL by stripping a leading "api." if present and let the user correct
-        # it in preferences when that guess is wrong.
-        base = prefs.server_url.rstrip("/")
-        site = base.replace("//projectflow-api.", "//projectflow.").replace("//api.", "//")
+        # The website and the API are separate deployments on different
+        # domains (Netlify and Render), so the site has its own setting rather
+        # than being guessed from the API address.
+        site = (prefs.site_url or "").rstrip("/")
+        if not site:
+            self.report({"ERROR"}, "Set the Website URL in the add-on preferences.")
+            return {"CANCELLED"}
 
         url = f"{site}/board/{props.workspace_id}/{props.board_id}"
         bpy.ops.wm.url_open(url=url)

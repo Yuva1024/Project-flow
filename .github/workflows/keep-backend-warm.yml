@@ -1,0 +1,51 @@
+# Keeps the Render backend awake.
+#
+# Render's free tier stops a web service after ~15 minutes without traffic.
+# Measured against production, the first request after that takes ~22 seconds
+# and every request after it takes under 100 ms — so whoever arrives first after
+# a quiet spell waits twenty seconds for the app to respond.
+#
+# Pinging every 10 minutes keeps it from sleeping. It costs nothing: GitHub
+# Actions minutes are unlimited on public repositories, and /api/health is
+# registered ahead of the rate limiter and touches no database.
+#
+# Two things to know:
+#
+# * Render's free plan allows 750 instance-hours a month across all free
+#   services on the account. Awake around the clock is ~730, so this fits for
+#   ONE service. A second free service on the same account would exhaust it.
+#   To save hours, narrow the schedule to working hours (see the commented
+#   example below).
+# * GitHub pauses scheduled workflows on a public repo after 60 days with no
+#   commits. If the site goes back to being slow after a quiet stretch, re-enable
+#   this workflow from the Actions tab.
+
+name: Keep backend warm
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub may start scheduled runs a few minutes late under
+    # load; 10 leaves margin inside Render's ~15 minute idle window.
+    - cron: "*/10 * * * *"
+    # Working hours only instead (08:00-20:00 IST, Mon-Sat), to use fewer
+    # instance-hours. The first request each morning will be slow again.
+    # - cron: "*/10 2-14 * * 1-6"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /api/health
+        run: |
+          # Generous timeout: if the service did fall asleep, this request is the
+          # one that wakes it and takes ~20-30 seconds.
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 \
+            https://project-flow-tx4p.onrender.com/api/health || echo "000")
+          echo "health: $status"
+          if [ "$status" != "200" ]; then
+            echo "::warning::Backend health check returned $status"
+          fi

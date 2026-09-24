@@ -17,7 +17,7 @@ import unreal
 CONFIG_FILENAME = "settings.json"
 CREDENTIALS_FILENAME = "credentials.json"
 
-DEFAULT_SERVER = "https://projectflow-api.onrender.com"
+DEFAULT_SERVER = "https://project-flow-tx4p.onrender.com"
 
 DEFAULTS: Dict[str, Any] = {
     "server_url": DEFAULT_SERVER,

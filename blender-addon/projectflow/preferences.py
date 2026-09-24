@@ -10,7 +10,10 @@ from bpy.types import AddonPreferences
 
 from . import cache, session
 
-DEFAULT_SERVER = "https://projectflow-api.onrender.com"
+DEFAULT_SERVER = "https://project-flow-tx4p.onrender.com"
+# The website and the API are separate deployments on different domains, so
+# one cannot be derived from the other.
+DEFAULT_SITE = "https://projectflow-10.netlify.app"
 
 
 def default_cache_dir() -> str:
@@ -31,6 +34,12 @@ class ProjectFlowPreferences(AddonPreferences):
         name="Server URL",
         description="Base URL of your ProjectFlow backend, without a trailing slash",
         default=DEFAULT_SERVER,
+    )
+
+    site_url: StringProperty(
+        name="Website URL",
+        description="Address of the ProjectFlow website, used by Open in Browser",
+        default=DEFAULT_SITE,
     )
 
     cache_dir: StringProperty(
@@ -83,6 +92,7 @@ class ProjectFlowPreferences(AddonPreferences):
         col = layout.column()
         col.use_property_split = True
         col.prop(self, "server_url")
+        col.prop(self, "site_url")
         col.prop(self, "cache_dir", placeholder=default_cache_dir())
 
         # -- account ------------------------------------------------------

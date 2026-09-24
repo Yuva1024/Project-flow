@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { useModelViewer } from "@/hooks/useModelViewer";
 import { X, Calendar, MessageSquare, Tag, CheckSquare, Users, Activity, Plus, Trash2, Check, Edit2, AlertCircle, ChevronDown, ChevronUp, Paperclip, Download, FileText, Image as ImageIcon, Video, UploadCloud, File as FileIcon, Box, Maximize2, Eye, FolderOpen, Search } from "lucide-react";
 import { Card } from "@/store/board";
 
@@ -21,7 +22,23 @@ interface Props { card: Card; workspaceId: string; boardId: string; onClose: () 
 export default function CardModal({ card, workspaceId: wId, boardId: bId, onClose, onRefresh }: Props) {
     const base = `/workspaces/${wId}/boards/${bId}`;
     const cardBase = `${base}/cards/${card.id}`;
-    const handleClose = () => { onRefresh(); onClose(); };
+    // The board refetches when this modal closes so badges, titles and counts
+    // reflect edits made here. It used to do that on every close, so merely
+    // opening a card to read it reloaded the entire board and re-rendered every
+    // card. Mutations now go through `cardApi`, which records that something
+    // changed; reads use `api` directly and leave the board alone.
+    const dirty = useRef(false);
+    const cardApi = useMemo(() => ({
+        post: ((...args: Parameters<typeof api.post>) => { dirty.current = true; return api.post(...args); }) as typeof api.post,
+        patch: ((...args: Parameters<typeof api.patch>) => { dirty.current = true; return api.patch(...args); }) as typeof api.patch,
+        put: ((...args: Parameters<typeof api.put>) => { dirty.current = true; return api.put(...args); }) as typeof api.put,
+        delete: ((...args: Parameters<typeof api.delete>) => { dirty.current = true; return api.delete(...args); }) as typeof api.delete,
+    }), []);
+
+    const handleClose = () => {
+        if (dirty.current) onRefresh();
+        onClose();
+    };
 
     // Card state
     const [cardTitle, setCardTitle] = useState(card.title);
@@ -64,7 +81,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const save3DSections = async (sections: Model3DSection[]) => {
         setModel3DSections(sections);
         try {
-            await api.patch(cardBase, { model3DSections: sections });
+            await cardApi.patch(cardBase, { model3DSections: sections });
         } catch {
             toast.error("Failed to save 3D sections");
         }
@@ -104,6 +121,8 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
 
     // Attachments & Drag-Drop State
     const [attachments, setAttachments] = useState<any[]>([]);
+    // Loads the ~1 MB model-viewer bundle only when a 3D preview will render.
+    useModelViewer(attachments.some((a: any) => Boolean(a.previewUrl) || /\.(glb|gltf)$/i.test(a.fileName || "")));
     const [isUploading, setIsUploading] = useState(false);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -134,7 +153,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const handleSaveToLibrary = async (attachmentId: string) => {
         try {
             toast.loading("Saving to Asset Library...", { id: "save-to-lib" });
-            const { data } = await api.post(`${cardBase}/attachments/${attachmentId}/save-to-library`);
+            const { data } = await cardApi.post(`${cardBase}/attachments/${attachmentId}/save-to-library`);
             setAttachments(prev => prev.map(a => a.id === attachmentId ? { ...a, ...data, isLibraryAsset: true } : a));
             toast.success("Saved to Workspace Asset Library!", { id: "save-to-lib" });
         } catch {
@@ -144,7 +163,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
 
     const handleLinkAsset = async (assetId: string) => {
         try {
-            const { data } = await api.post(`${cardBase}/attachments/link-asset/${assetId}`);
+            const { data } = await cardApi.post(`${cardBase}/attachments/link-asset/${assetId}`);
             setAttachments(prev => {
                 if (prev.some(a => a.id === data.id || a.fileUrl === data.fileUrl)) return prev;
                 return [data, ...prev];
@@ -216,7 +235,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         const formData = new FormData();
         formData.append('file', file);
         try {
-            const { data } = await api.post(`${cardBase}/attachments`, formData, {
+            const { data } = await cardApi.post(`${cardBase}/attachments`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 signal: controller.signal,
             });
@@ -237,7 +256,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
 
     const handleDeleteAttachment = async (id: string) => {
         try {
-            await api.delete(`${cardBase}/attachments/${id}`);
+            await cardApi.delete(`${cardBase}/attachments/${id}`);
             setAttachments(attachments.filter(a => a.id !== id));
 
             // If any 3D section was linked to this deleted attachment, reset its model
@@ -283,7 +302,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
             return;
         }
         try {
-            await api.patch(cardBase, { title: cardTitle.trim() });
+            await cardApi.patch(cardBase, { title: cardTitle.trim() });
             setIsEditingTitle(false);
             toast.success("Card title saved");
         } catch {
@@ -294,7 +313,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const handleDeleteCard = async () => {
         if (!confirm("Are you sure you want to delete this card?")) return;
         try {
-            await api.delete(cardBase);
+            await cardApi.delete(cardBase);
             toast.success("Card deleted");
             handleClose();
         } catch {
@@ -302,17 +321,17 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         }
     };
 
-    const saveDesc = async () => { try { await api.patch(cardBase, { description: desc }); setEditingDesc(false); toast.success("Description updated"); } catch { toast.error("Failed"); } };
-    const savePriority = async (p: string) => { setPriority(p); try { await api.patch(cardBase, { priority: p || null }); } catch { toast.error("Failed"); } };
-    const saveDueDate = async (d: string) => { setDueDate(d); try { await api.patch(cardBase, { dueDate: d ? new Date(d).toISOString() : null }); } catch { toast.error("Failed"); } };
+    const saveDesc = async () => { try { await cardApi.patch(cardBase, { description: desc }); setEditingDesc(false); toast.success("Description updated"); } catch { toast.error("Failed"); } };
+    const savePriority = async (p: string) => { setPriority(p); try { await cardApi.patch(cardBase, { priority: p || null }); } catch { toast.error("Failed"); } };
+    const saveDueDate = async (d: string) => { setDueDate(d); try { await cardApi.patch(cardBase, { dueDate: d ? new Date(d).toISOString() : null }); } catch { toast.error("Failed"); } };
     
     // Comment functions
-    const addComment = async (e: React.FormEvent) => { e.preventDefault(); if (!newComment.trim()) return; try { const { data } = await api.post(`${cardBase}/comments`, { content: newComment.trim() }); setComments([data, ...comments]); setNewComment(""); } catch { toast.error("Failed"); } };
-    const deleteComment = async (id: string) => { try { await api.delete(`${cardBase}/comments/${id}`); setComments(comments.filter(c => c.id !== id)); } catch { toast.error("Failed"); } };
+    const addComment = async (e: React.FormEvent) => { e.preventDefault(); if (!newComment.trim()) return; try { const { data } = await cardApi.post(`${cardBase}/comments`, { content: newComment.trim() }); setComments([data, ...comments]); setNewComment(""); } catch { toast.error("Failed"); } };
+    const deleteComment = async (id: string) => { try { await cardApi.delete(`${cardBase}/comments/${id}`); setComments(comments.filter(c => c.id !== id)); } catch { toast.error("Failed"); } };
     const saveCommentEdit = async (commentId: string) => {
         if (!editingCommentText.trim()) return;
         try {
-            await api.patch(`${cardBase}/comments/${commentId}`, { content: editingCommentText.trim() });
+            await cardApi.patch(`${cardBase}/comments/${commentId}`, { content: editingCommentText.trim() });
             setComments(comments.map(c => c.id === commentId ? { ...c, content: editingCommentText.trim() } : c));
             setEditingCommentId(null);
             toast.success("Comment updated");
@@ -326,15 +345,15 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         if (!newLabelName.trim()) return;
         try {
             if (editingLabelId) {
-                await api.patch(`${base}/labels/${editingLabelId}`, { name: newLabelName.trim(), color: newLabelColor });
+                await cardApi.patch(`${base}/labels/${editingLabelId}`, { name: newLabelName.trim(), color: newLabelColor });
                 setBoardLabels(boardLabels.map(l => l.id === editingLabelId ? { ...l, name: newLabelName.trim(), color: newLabelColor } : l));
                 setLabels(labels.map(l => l.labelId === editingLabelId ? { ...l, label: { ...l.label, name: newLabelName.trim(), color: newLabelColor } } : l));
                 setEditingLabelId(null);
                 setNewLabelName("");
                 toast.success("Label updated");
             } else {
-                const { data: label } = await api.post(`${base}/labels`, { name: newLabelName.trim(), color: newLabelColor });
-                const { data: assignment } = await api.post(`${cardBase}/labels`, { labelId: label.id });
+                const { data: label } = await cardApi.post(`${base}/labels`, { name: newLabelName.trim(), color: newLabelColor });
+                const { data: assignment } = await cardApi.post(`${cardBase}/labels`, { labelId: label.id });
                 setLabels([...labels, { ...assignment, label }]);
                 setBoardLabels([...boardLabels, label]);
                 setNewLabelName("");
@@ -348,7 +367,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     const deleteLabelFromBoard = async (labelId: string) => {
         if (!confirm("Are you sure you want to delete this label from the board?")) return;
         try {
-            await api.delete(`${base}/labels/${labelId}`);
+            await cardApi.delete(`${base}/labels/${labelId}`);
             setBoardLabels(boardLabels.filter(l => l.id !== labelId));
             setLabels(labels.filter(l => l.labelId !== labelId));
             if (editingLabelId === labelId) {
@@ -365,10 +384,10 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
         const assigned = labels.some(l => l.labelId === label.id);
         try {
             if (assigned) {
-                await api.delete(`${cardBase}/labels/${label.id}`);
+                await cardApi.delete(`${cardBase}/labels/${label.id}`);
                 setLabels(labels.filter(l => l.labelId !== label.id));
             } else {
-                const { data } = await api.post(`${cardBase}/labels`, { labelId: label.id });
+                const { data } = await cardApi.post(`${cardBase}/labels`, { labelId: label.id });
                 setLabels([...labels, { ...data, label }]);
             }
         } catch {
@@ -377,11 +396,11 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     };
 
     // Checklist functions
-    const addChecklist = async () => { if (!newChecklistTitle.trim()) return; try { const { data } = await api.post(`${cardBase}/checklists`, { title: newChecklistTitle.trim() }); setChecklists([...checklists, data]); setNewChecklistTitle(""); setShowAddChecklist(false); } catch { toast.error("Failed"); } };
-    const deleteChecklist = async (id: string) => { try { await api.delete(`${cardBase}/checklists/${id}`); setChecklists(checklists.filter(c => c.id !== id)); } catch { toast.error("Failed"); } };
+    const addChecklist = async () => { if (!newChecklistTitle.trim()) return; try { const { data } = await cardApi.post(`${cardBase}/checklists`, { title: newChecklistTitle.trim() }); setChecklists([...checklists, data]); setNewChecklistTitle(""); setShowAddChecklist(false); } catch { toast.error("Failed"); } };
+    const deleteChecklist = async (id: string) => { try { await cardApi.delete(`${cardBase}/checklists/${id}`); setChecklists(checklists.filter(c => c.id !== id)); } catch { toast.error("Failed"); } };
     const renameChecklist = async (clId: string, title: string) => {
         try {
-            await api.patch(`${cardBase}/checklists/${clId}`, { title });
+            await cardApi.patch(`${cardBase}/checklists/${clId}`, { title });
             setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, title } : cl));
             toast.success("Checklist renamed");
         } catch {
@@ -390,18 +409,18 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
     };
 
     // Checklist item functions
-    const addChecklistItem = async (clId: string, content: string) => { try { const { data } = await api.post(`${cardBase}/checklists/${clId}/items`, { content }); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: [...cl.items, data] } : cl)); } catch { toast.error("Failed"); } };
-    const toggleChecklistItem = async (clId: string, itemId: string, isChecked: boolean) => { try { await api.patch(`${cardBase}/checklists/${clId}/items/${itemId}`, { isChecked: !isChecked }); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.map((it: any) => it.id === itemId ? { ...it, isChecked: !isChecked } : it) } : cl)); } catch { toast.error("Failed"); } };
+    const addChecklistItem = async (clId: string, content: string) => { try { const { data } = await cardApi.post(`${cardBase}/checklists/${clId}/items`, { content }); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: [...cl.items, data] } : cl)); } catch { toast.error("Failed"); } };
+    const toggleChecklistItem = async (clId: string, itemId: string, isChecked: boolean) => { try { await cardApi.patch(`${cardBase}/checklists/${clId}/items/${itemId}`, { isChecked: !isChecked }); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.map((it: any) => it.id === itemId ? { ...it, isChecked: !isChecked } : it) } : cl)); } catch { toast.error("Failed"); } };
     const editChecklistItem = async (clId: string, itemId: string, content: string) => {
         try {
-            await api.patch(`${cardBase}/checklists/${clId}/items/${itemId}`, { content });
+            await cardApi.patch(`${cardBase}/checklists/${clId}/items/${itemId}`, { content });
             setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.map((it: any) => it.id === itemId ? { ...it, content } : it) } : cl));
             toast.success("Item updated");
         } catch {
             toast.error("Failed to update item");
         }
     };
-    const deleteChecklistItem = async (clId: string, itemId: string) => { try { await api.delete(`${cardBase}/checklists/${clId}/items/${itemId}`); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.filter((it: any) => it.id !== itemId) } : cl)); } catch { toast.error("Failed"); } };
+    const deleteChecklistItem = async (clId: string, itemId: string) => { try { await cardApi.delete(`${cardBase}/checklists/${clId}/items/${itemId}`); setChecklists(checklists.map(cl => cl.id === clId ? { ...cl, items: cl.items.filter((it: any) => it.id !== itemId) } : cl)); } catch { toast.error("Failed"); } };
     
     const progress = (cl: any) => cl.items?.length ? Math.round((cl.items.filter((i: any) => i.isChecked).length / cl.items.length) * 100) : 0;
 
@@ -555,7 +574,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                                                 const isAssigned = members.some(m => m.userId === wm.userId);
                                                 return (
                                                     <button key={wm.userId}
-                                                            onClick={async () => { try { if (isAssigned) { await api.delete(`${cardBase}/members/${wm.userId}`); setMembers(members.filter(m => m.userId !== wm.userId)); } else { const { data } = await api.post(`${cardBase}/members`, { userId: wm.userId }); setMembers([...members, data]); } } catch { toast.error("Failed"); } }}
+                                                            onClick={async () => { try { if (isAssigned) { await cardApi.delete(`${cardBase}/members/${wm.userId}`); setMembers(members.filter(m => m.userId !== wm.userId)); } else { const { data } = await cardApi.post(`${cardBase}/members`, { userId: wm.userId }); setMembers([...members, data]); } } catch { toast.error("Failed"); } }}
                                                             style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, fontSize: 12, background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", transition: "background 150ms" }}
                                                             onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
                                                             onMouseOut={(e) => e.currentTarget.style.background = "transparent"}>
@@ -656,7 +675,7 @@ export default function CardModal({ card, workspaceId: wId, boardId: bId, onClos
                  initial={{ x: "100%" }}
                  animate={{ x: 0 }}
                  exit={{ x: "100%" }}
-                 transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                 transition={{ type: "spring", bounce: 0, duration: 0.22 }}
                  onPaste={handlePaste}
                  onDragOver={(e) => {
                      // Only react to files coming from outside the page. Dragging an

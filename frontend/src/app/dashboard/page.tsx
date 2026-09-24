@@ -677,7 +677,7 @@ export default function DashboardPage() {
                 {showProfileModal && user && (
                     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
                         <div className="overlay-backdrop" onClick={() => setShowProfileModal(false)} />
-                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 500, width: "100%", border: "1px solid var(--border-active)" }}>
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.2 }} style={{ maxWidth: 500, width: "100%", border: "1px solid var(--border-active)" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px 14px", borderBottom: "1px solid var(--border)" }}>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, margin: 0, letterSpacing: "-0.01em" }}>My Settings</h3>
                                 <button onClick={() => setShowProfileModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "var(--text-muted)", display: "flex" }}><X size={18} /></button>
@@ -731,7 +731,7 @@ export default function DashboardPage() {
                 {showDeleteWsModal && currentWorkspace && (
                     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
                         <div className="overlay-backdrop" onClick={() => setShowDeleteWsModal(false)} />
-                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.2 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
                             <div style={{ padding: 24 }}>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Workspace</h3>
                                 <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
@@ -752,7 +752,7 @@ export default function DashboardPage() {
                 {showDeleteBoardModal && (
                     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
                         <div className="overlay-backdrop" onClick={() => setShowDeleteBoardModal(null)} />
-                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.2 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
                             <div style={{ padding: 24 }}>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Board</h3>
                                 <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
@@ -773,7 +773,7 @@ export default function DashboardPage() {
                 {showDeleteWhiteboardModal && (
                     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
                         <div className="overlay-backdrop" onClick={() => setShowDeleteWhiteboardModal(null)} />
-                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.3 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
+                        <motion.div className="overlay-content" initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }} transition={{ type: "spring", bounce: 0, duration: 0.2 }} style={{ maxWidth: 420, width: "100%", border: "1px solid var(--border-active)" }}>
                             <div style={{ padding: 24 }}>
                                 <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12, color: "var(--danger)", letterSpacing: "-0.01em" }}>Delete Whiteboard</h3>
                                 <p style={{ fontSize: 13.5, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '@/lib/api';
+import { useModelViewer } from "@/hooks/useModelViewer";
 import toast from 'react-hot-toast';
 import { 
     Folder, FolderPlus, Tag, Search, Upload, Grid3x3, List, 
@@ -38,6 +39,8 @@ function getMimeCategory(mime?: string, fileName?: string): string {
 
 export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibraryProps) {
     const [assets, setAssets] = useState<any[]>([]);
+    // Loads the ~1 MB model-viewer bundle only when a 3D thumbnail will render.
+    useModelViewer(assets.some((a: any) => /\.(glb|gltf)$/i.test(a.fileName || "")));
     const [folders, setFolders] = useState<any[]>([]);
     const [tags, setTags] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
