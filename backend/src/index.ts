@@ -116,6 +116,11 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     if (err?.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ message: 'File too large' });
     }
+    // Multer's other upload errors are client mistakes, not server faults, and
+    // used to surface as a 500 "Internal Server Error".
+    if (err?.code === 'LIMIT_FILE_COUNT' || err?.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ message: 'Upload one file per request' });
+    }
     // Multer rejects blocked extensions before the route handler runs, so this
     // has to be caught here rather than in the individual upload controllers.
     if (err?.message === 'File type not allowed') {

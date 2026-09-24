@@ -21,6 +21,10 @@ export default function CommandPalette() {
     const [activeIndex, setActiveIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // The debounce cancels a pending timer, not a request already in flight, so
+    // a slow response to an earlier query could land last and overwrite results
+    // for the newer one. Only the latest request is allowed to write.
+    const latestRequest = useRef(0);
 
     // Global hotkey
     useEffect(() => {
@@ -53,13 +57,15 @@ export default function CommandPalette() {
         if (q.length < 2) { setBoards([]); setCards([]); setSearching(false); return; }
         setSearching(true);
         debounceRef.current = setTimeout(async () => {
+            const requestId = ++latestRequest.current;
             try {
                 const { data } = await api.get(`/search?q=${encodeURIComponent(q)}`);
+                if (requestId !== latestRequest.current) return;
                 setBoards(data.boards || []);
                 setCards(data.cards || []);
                 setActiveIndex(0);
-            } catch { /* silent */ }
-            setSearching(false);
+            } catch { /* search failures just leave the previous results */ }
+            if (requestId === latestRequest.current) setSearching(false);
         }, 250);
         return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     }, [query]);

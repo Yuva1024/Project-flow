@@ -57,7 +57,13 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
     const [showNewTag, setShowNewTag] = useState(false);
     const [newTagName, setNewTagName] = useState('');
 
+    // Filters change quickly; the debounce cancels pending timers but not
+    // requests already in flight, so a slow earlier response could land last
+    // and show the wrong folder. Only the newest request may write.
+    const latestFetch = useRef(0);
+
     const fetchAssets = async () => {
+        const requestId = ++latestFetch.current;
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -69,14 +75,15 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
             }
 
             const { data } = await api.get(`/workspaces/${workspaceId}/assets?${params.toString()}`);
-            console.log('[AssetLibrary] fetchAssets response:', data);
+            if (requestId !== latestFetch.current) return;
             const list = Array.isArray(data) ? data : (data.assets || []);
             setAssets(list);
         } catch (error) {
+            if (requestId !== latestFetch.current) return;
             console.error("[AssetLibrary] Failed to fetch assets", error);
             toast.error("Failed to load assets");
         } finally {
-            setLoading(false);
+            if (requestId === latestFetch.current) setLoading(false);
         }
     };
 
@@ -131,25 +138,46 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
     };
 
     const handleUploadFiles = async (files: FileList | File[]) => {
-        const formData = new FormData();
-        Array.from(files).forEach(file => {
+        // The endpoint takes one file per request (each is hashed and stored as
+        // its own asset). All files used to go in a single request under the
+        // same field, which the server rejects outright — so choosing more than
+        // one file failed the whole upload. Send them individually instead, a
+        // few at a time, and report partial success honestly.
+        const list = Array.from(files);
+        const toastId = toast.loading(`Uploading ${list.length} file(s)...`);
+        let done = 0;
+        const failed: string[] = [];
+
+        const uploadOne = async (file: File) => {
+            const formData = new FormData();
             formData.append('file', file);
-        });
-        if (selectedFolder) {
-            formData.append('folderId', selectedFolder);
+            if (selectedFolder) formData.append('folderId', selectedFolder);
+            try {
+                await api.post(`/workspaces/${workspaceId}/assets`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } catch (error: any) {
+                failed.push(`${file.name}: ${error?.response?.data?.message || 'upload failed'}`);
+            } finally {
+                done++;
+                toast.loading(`Uploading… ${done}/${list.length}`, { id: toastId });
+            }
+        };
+
+        const CONCURRENCY = 3;
+        for (let i = 0; i < list.length; i += CONCURRENCY) {
+            await Promise.all(list.slice(i, i + CONCURRENCY).map(uploadOne));
         }
 
-        const toastId = toast.loading(`Uploading ${files.length} file(s)...`);
-        try {
-            await api.post(`/workspaces/${workspaceId}/assets`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            toast.success("Upload complete", { id: toastId });
-            fetchAssets();
-        } catch (error) {
-            console.error(error);
-            toast.error("Upload failed", { id: toastId });
+        const succeeded = list.length - failed.length;
+        if (failed.length === 0) {
+            toast.success(`Uploaded ${succeeded} file(s)`, { id: toastId });
+        } else if (succeeded > 0) {
+            toast.error(`Uploaded ${succeeded} of ${list.length}. Failed: ${failed.join('; ')}`, { id: toastId, duration: 8000 });
+        } else {
+            toast.error(`Upload failed. ${failed.join('; ')}`, { id: toastId, duration: 8000 });
         }
+        if (succeeded > 0) fetchAssets();
     };
 
     const onDragOver = (e: React.DragEvent) => {

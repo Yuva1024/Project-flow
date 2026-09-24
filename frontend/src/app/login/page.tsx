@@ -34,7 +34,14 @@ export default function LoginPage() {
             await login(email, password); 
             router.push("/dashboard"); 
         } catch (err: any) { 
-            toast.error(err.response?.data?.message || "Invalid credentials"); 
+            toast.error(
+                // No response means the request never got an answer — usually the
+                // server waking up — not a wrong password. Saying "Invalid
+                // credentials" sent people hunting for a typo that did not exist.
+                err.response
+                    ? err.response.data?.message || "Invalid credentials"
+                    : "Can't reach the server right now. Please try again in a moment."
+            ); 
         }
         setLoading(false);
     };

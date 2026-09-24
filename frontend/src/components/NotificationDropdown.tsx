@@ -28,9 +28,29 @@ export default function NotificationDropdown() {
     };
 
     useEffect(() => {
-        fetchUnreadCount();
-        const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30 seconds
-        return () => clearInterval(interval);
+        // Poll only while the tab is visible. A background tab used to keep
+        // asking every 30 seconds for a badge nobody could see — ~120 requests an
+        // hour per open tab, against a rate limit shared with everything else.
+        // Coming back to the tab refreshes immediately instead.
+        let interval: ReturnType<typeof setInterval> | null = null;
+
+        const start = () => {
+            if (interval) return;
+            fetchUnreadCount();
+            interval = setInterval(fetchUnreadCount, 30000);
+        };
+        const stop = () => {
+            if (interval) clearInterval(interval);
+            interval = null;
+        };
+        const onVisibility = () => (document.visibilityState === "visible" ? start() : stop());
+
+        onVisibility();
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            stop();
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
     }, []);
 
     useEffect(() => {
