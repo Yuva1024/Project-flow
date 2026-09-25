@@ -38,6 +38,10 @@ cached_boards: List[Dict[str, Any]] = []
 cached_board: Optional[Dict[str, Any]] = None
 cached_card_details: Dict[str, Dict[str, Any]] = {}
 
+#: A card to select once the board it lives on finishes loading. Set by
+#: "Go to Card" when the object belongs to a different board.
+pending_card_id: Optional[str] = None
+
 
 def set_workspaces(workspaces: List[Dict[str, Any]]) -> None:
     global cached_workspaces, _workspace_items
@@ -188,6 +192,19 @@ def _on_filter_changed(self, context):
     rebuild_card_list(self)
 
 
+def _on_active_card_changed(self, context):
+    """Selecting a card starts loading its attachments and thumbnails.
+
+    Starts a background task rather than running an operator, which is what an
+    update callback is allowed to do.
+    """
+    from . import ops_attachments
+
+    item = self.active_card()
+    if item is not None and item.attachment_count:
+        ops_attachments.request_attachments(self)
+
+
 # -- card list -------------------------------------------------------------
 
 
@@ -250,6 +267,15 @@ def rebuild_card_list(props: "ProjectFlowProperties") -> None:
             item.attachment_count = counts.get("attachments", 0)
             item.assigned_to_me = assigned
 
+    # A pending "Go to Card" wins over keeping the previous selection.
+    global pending_card_id
+    if pending_card_id:
+        target, pending_card_id = pending_card_id, None
+        for index, item in enumerate(props.cards):
+            if item.card_id == target:
+                props.active_card_index = index
+                return
+
     # Keep the same card selected across a refresh where possible.
     if previous_id:
         for index, item in enumerate(props.cards):
@@ -305,7 +331,18 @@ class ProjectFlowProperties(PropertyGroup):
     )
 
     cards: CollectionProperty(type=ProjectFlowCard)
-    active_card_index: IntProperty(name="Active card", default=0)
+    active_card_index: IntProperty(
+        name="Active card", default=0, update=_on_active_card_changed
+    )
+
+    follow_active_object: BoolProperty(
+        name="Follow Selection",
+        description=(
+            "Selecting an object in the viewport selects the card it was "
+            "attached to or imported from"
+        ),
+        default=True,
+    )
 
     # Progress + status, written by task callbacks on the main thread.
     busy: BoolProperty(default=False)

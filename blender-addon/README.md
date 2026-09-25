@@ -130,6 +130,45 @@ day.
 Also available: attach without advancing, move to any section (including
 backwards, for rework), and post a comment.
 
+### Card attachments
+
+The **Attachments** panel under a card lists its files, and loads them as soon
+as you select the card.
+
+- **Models** (`.glb`, `.gltf`, `.fbx`, `.obj`) have an **Import** button that
+  brings them into the current scene. It always imports the real file, never
+  the small GLB the website uses for its preview. FBX uses Blender's default
+  import axes, which match the Unreal export preset, so a round trip comes back
+  the right way up.
+- **Images** show as thumbnails. **View** opens one full size in an Image
+  Editor. **Reference** drops it into the viewport as a semi-transparent
+  reference image at the 3D cursor, facing the front view, ready to model
+  against.
+- Anything Blender cannot open (PDF, GIF, SVG…) gets a button to open it in the
+  browser.
+
+Files go into the same content-addressed cache as the asset sync, so each one
+downloads once. Images over 25 MB are not fetched just for a thumbnail; they
+download when you click View or Reference.
+
+### Objects remember their card
+
+Attaching a model, or importing one from a card, writes the card onto each
+object as custom properties (`pf_card_id`, `pf_card_title`, …). They are saved
+with the `.blend`.
+
+When the selected object is linked to a card, the Boards panel shows which one,
+with a button to jump to it. With **Follow Selection** on, just selecting the
+object in the viewport selects its card — including clearing any filter that
+was hiding it. If the card lives on a different board, Go to Card switches
+boards and selects it once loaded.
+
+### Upload progress
+
+Uploads stream from disk rather than loading the whole file into memory, so a
+large FBX no longer needs twice its size in RAM. A progress bar shows megabytes
+sent, with an **✕** to cancel part-way.
+
 ### Export presets
 
 The attach dialog carries the export options, with presets for the common

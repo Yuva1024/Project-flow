@@ -16,7 +16,8 @@ import socket
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Iterator, List, Optional
+import threading
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 USER_AGENT = "ProjectFlow-Blender/0.1.0"
 
@@ -359,12 +360,20 @@ class ApiClient:
     # -- uploads -----------------------------------------------------------
 
     def upload_card_attachment(
-        self, workspace_id: str, board_id: str, card_id: str, file_path: str
+        self,
+        workspace_id: str,
+        board_id: str,
+        card_id: str,
+        file_path: str,
+        progress: Optional[Callable[[int, int], None]] = None,
+        cancel: Optional[threading.Event] = None,
     ) -> Dict[str, Any]:
         return self._upload(
             f"/api/workspaces/{workspace_id}/boards/{board_id}"
             f"/cards/{card_id}/attachments",
             file_path,
+            progress=progress,
+            cancel=cancel,
         )
 
     def upload_attachment_preview(
@@ -391,52 +400,28 @@ class ApiClient:
         path: str,
         file_path: str,
         fields: Optional[Dict[str, str]] = None,
+        progress: Optional[Callable[[int, int], None]] = None,
+        cancel: Optional[threading.Event] = None,
     ) -> Any:
-        """Posts a file as multipart/form-data.
+        """Posts a file as multipart/form-data, streamed from disk.
 
-        Built by hand because there is no ``requests`` here. The whole file is
-        read into memory, which is acceptable for exported selections but is the
-        reason the caller should not point this at multi-gigabyte sources.
+        This used to read the whole file into memory and then build the request
+        body as a second copy — a 200 MB export meant ~400 MB resident, and a
+        dialog that sat on "Uploading…" with no sign of progress and no way out.
+        The body is now produced in chunks as the socket accepts them, with a
+        known Content-Length, so memory stays flat, ``progress(sent, total)`` is
+        called as bytes go out, and setting ``cancel`` aborts between chunks.
         """
-        import mimetypes
-        import os
-        import uuid as _uuid
-
-        boundary = f"----ProjectFlow{_uuid.uuid4().hex}"
-        filename = os.path.basename(file_path)
-        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-        with open(file_path, "rb") as handle:
-            file_bytes = handle.read()
-
-        parts: List[bytes] = []
-        for key, value in (fields or {}).items():
-            if value is None:
-                continue
-            parts.append(
-                (
-                    f"--{boundary}\r\n"
-                    f'Content-Disposition: form-data; name="{key}"\r\n\r\n'
-                    f"{value}\r\n"
-                ).encode("utf-8")
-            )
-
-        parts.append(
-            (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-                f"Content-Type: {content_type}\r\n\r\n"
-            ).encode("utf-8")
+        body, content_type, total = build_multipart(
+            file_path, fields=fields, progress=progress, cancel=cancel
         )
-        parts.append(file_bytes)
-        parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
-
-        payload = b"".join(parts)
 
         req = urllib.request.Request(
             self._url(path),
-            data=payload,
-            headers=self._headers({"Content-Type": f"multipart/form-data; boundary={boundary}"}),
+            data=body,
+            headers=self._headers(
+                {"Content-Type": content_type, "Content-Length": str(total)}
+            ),
             method="POST",
         )
 
@@ -445,13 +430,102 @@ class ApiClient:
                 self.warm = True
                 raw = response.read()
                 return json.loads(raw.decode("utf-8")) if raw else None
+        except UploadCancelled:
+            raise
         except urllib.error.HTTPError as exc:
             self.warm = True
             raise self._map_http_error(exc) from exc
         except socket.timeout as exc:
             raise NetworkError("The upload timed out.") from exc
         except urllib.error.URLError as exc:
+            # urllib wraps errors raised while sending the body, including our
+            # own cancellation; unwrap that so the caller can tell them apart.
+            if isinstance(exc.reason, UploadCancelled):
+                raise exc.reason from None
             raise NetworkError(f"Upload failed: {exc.reason}") from exc
+        except OSError as exc:
+            if cancel is not None and cancel.is_set():
+                raise UploadCancelled("Upload cancelled.") from exc
+            raise NetworkError(f"Upload failed: {exc}") from exc
+
+
+class UploadCancelled(ApiError):
+    """Raised when an upload is stopped by the user part-way through."""
+
+
+#: Bytes read from disk per chunk while streaming an upload.
+UPLOAD_CHUNK = 1 << 20
+
+
+def build_multipart(
+    file_path: str,
+    fields: Optional[Dict[str, str]] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
+    cancel: Optional[threading.Event] = None,
+    boundary: Optional[str] = None,
+):
+    """Returns ``(iterable_body, content_type, content_length)`` for a file upload.
+
+    The body is a generator, so the file is read one chunk at a time while it is
+    being sent. The exact length is computed up front from the file size so the
+    request carries a Content-Length rather than falling back to chunked
+    transfer encoding.
+    """
+    import mimetypes
+    import os
+    import uuid as _uuid
+
+    boundary = boundary or f"----ProjectFlow{_uuid.uuid4().hex}"
+    filename = os.path.basename(file_path)
+    # A quote or newline in the filename would break the header it sits in.
+    safe_name = filename.replace('"', "'").replace("\r", " ").replace("\n", " ")
+    file_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    head = b""
+    for key, value in (fields or {}).items():
+        if value is None:
+            continue
+        head += (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'
+            f"{value}\r\n"
+        ).encode("utf-8")
+    head += (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
+        f"Content-Type: {file_type}\r\n\r\n"
+    ).encode("utf-8")
+    tail = f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+    file_size = os.path.getsize(file_path)
+    total = len(head) + file_size + len(tail)
+
+    def generate():
+        sent = 0
+
+        def report(n: int) -> None:
+            nonlocal sent
+            sent += n
+            if progress is not None:
+                progress(sent, total)
+
+        yield head
+        report(len(head))
+
+        with open(file_path, "rb") as handle:
+            while True:
+                if cancel is not None and cancel.is_set():
+                    raise UploadCancelled("Upload cancelled.")
+                chunk = handle.read(UPLOAD_CHUNK)
+                if not chunk:
+                    break
+                yield chunk
+                report(len(chunk))
+
+        yield tail
+        report(len(tail))
+
+    return generate(), f"multipart/form-data; boundary={boundary}", total
 
 
 def download_file(url: str, destination: str, chunk_size: int = 1 << 20) -> int:

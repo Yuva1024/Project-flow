@@ -16,6 +16,7 @@ import bpy
 from . import (
     export_settings,
     ops_assets,
+    ops_attachments,
     ops_auth,
     ops_boards,
     ops_card_extras,
@@ -37,6 +38,7 @@ _modules = (
     ops_assets,
     ops_presets,
     ops_boards,
+    ops_attachments,
     ops_card_extras,
     ui,
 )

@@ -389,3 +389,117 @@ class TestOperatorWiring(unittest.TestCase):
             assignments,
             "every attach button must set advance explicitly",
         )
+
+
+class TestStreamingUpload(unittest.TestCase):
+    """The upload body is generated in chunks rather than built in memory.
+
+    Checked against a real multer server during development (30 MB, SHA-256
+    intact); these keep the properties that made that work from regressing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.api = _load("api")
+
+    def _file(self, size: int, name: str = "pf test model.fbx") -> str:
+        directory = tempfile.mkdtemp(prefix="pf-up-")
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, name)
+        with open(path, "wb") as handle:
+            handle.write(os.urandom(size))
+        return path
+
+    def test_declared_length_matches_bytes_sent(self):
+        # A wrong Content-Length makes the server wait for bytes that never
+        # come, or truncate the file. Must be exact.
+        path = self._file(3 * self.api.UPLOAD_CHUNK + 123)
+        body, _ctype, total = self.api.build_multipart(path, fields={"folderId": "abc"})
+        self.assertEqual(sum(len(part) for part in body), total)
+
+    def test_body_is_valid_multipart_with_the_file_intact(self):
+        from email.parser import BytesParser
+        from email.policy import HTTP
+
+        path = self._file(2 * self.api.UPLOAD_CHUNK + 7)
+        body, ctype, _total = self.api.build_multipart(path, fields={"folderId": "f1"})
+        raw = b"".join(body)
+
+        message = BytesParser(policy=HTTP).parsebytes(
+            f"Content-Type: {ctype}\r\n\r\n".encode() + raw
+        )
+        parts = {p.get_param("name", header="content-disposition"): p for p in message.iter_parts()}
+
+        self.assertEqual(parts["folderId"].get_content().strip(), "f1")
+        self.assertEqual(parts["file"].get_filename(), "pf test model.fbx")
+        with open(path, "rb") as handle:
+            self.assertEqual(parts["file"].get_payload(decode=True), handle.read())
+
+    def test_file_is_read_in_chunks_not_all_at_once(self):
+        path = self._file(4 * self.api.UPLOAD_CHUNK)
+        body, _ctype, _total = self.api.build_multipart(path)
+        largest = max(len(part) for part in body)
+        self.assertLessEqual(largest, self.api.UPLOAD_CHUNK)
+
+    def test_progress_reaches_the_total(self):
+        path = self._file(2 * self.api.UPLOAD_CHUNK)
+        seen = []
+        body, _ctype, total = self.api.build_multipart(path, progress=lambda s, t: seen.append((s, t)))
+        for _ in body:
+            pass
+        self.assertEqual(seen[-1], (total, total))
+        self.assertEqual([s for s, _ in seen], sorted(s for s, _ in seen))
+
+    def test_cancel_stops_between_chunks(self):
+        import threading
+
+        path = self._file(5 * self.api.UPLOAD_CHUNK)
+        cancel = threading.Event()
+        body, _ctype, _total = self.api.build_multipart(path, cancel=cancel)
+        next(body)  # headers
+        next(body)  # first chunk
+        cancel.set()
+        with self.assertRaises(self.api.UploadCancelled):
+            for _ in body:
+                pass
+
+    # Windows forbids quotes in filenames, so the fixture cannot exist there;
+    # macOS and Linux allow them, which is where the escaping matters.
+    @unittest.skipIf(os.name == "nt", "quote characters are not valid in Windows filenames")
+    def test_quote_in_filename_cannot_break_the_header(self):
+        path = self._file(10, name='crate "v2".fbx')
+        body, _ctype, _total = self.api.build_multipart(path)
+        head = next(body).decode("utf-8")
+        self.assertIn("filename=\"crate 'v2'.fbx\"", head)
+
+
+class TestAttachmentWiring(unittest.TestCase):
+    """Static checks on ops_attachments.py, which needs bpy to import."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(_PACKAGE_DIR, "ops_attachments.py"), encoding="utf-8") as fh:
+            cls.src = fh.read()
+
+    def test_imports_use_the_real_file_not_the_web_preview(self):
+        # previewUrl is a small GLB for the website; importing it instead of
+        # the FBX would hand the artist a lossy stand-in.
+        self.assertNotIn("previewUrl", self.src)
+
+    def test_gif_and_svg_are_not_offered_as_images(self):
+        # Blender cannot open either; offering View would just error.
+        start = self.src.index("IMAGE_EXTENSIONS = {")
+        line = self.src[start:self.src.index("}", start)]
+        self.assertNotIn(".gif", line)
+        self.assertNotIn(".svg", line)
+
+    def test_message_bus_resubscribes_after_file_load(self):
+        # Blender drops msgbus subscriptions on every file load; without a
+        # persistent load_post handler, "follow selection" dies silently.
+        self.assertIn("@bpy.app.handlers.persistent", self.src)
+        self.assertIn("load_post.append(_resubscribe_on_load)", self.src)
+
+    def test_previews_are_released_on_unregister(self):
+        # A preview collection that is never removed leaks, and Blender warns
+        # about it on every add-on reload.
+        self.assertIn("bpy.utils.previews.remove(_previews)", self.src)

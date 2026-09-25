@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
-from . import api, export_settings, properties, session, tasks
+from . import api, export_settings, ops_attachments, properties, session, tasks
 from .ops_auth import check_online_access, make_client, report_api_error
 from .preferences import get_preferences
 
@@ -489,13 +490,43 @@ class PROJECTFLOW_OT_attach_selection(Operator):
         should_advance = self.advance
         next_stage = properties.next_section(card.section_id)
 
+        # Remember which objects went up, by name: the selection may well
+        # change while the upload runs, and the tagging happens afterwards.
+        exported_names = [obj.name for obj in context.selected_objects]
+        card_title = card.title
+
         props.busy = True
+        props.progress = 0
         props.status = f"Uploading {file_name}…"
         props.last_error = ""
 
+        # Progress arrives from the worker thread. Writing a Blender property
+        # there is not safe, so it goes through a plain dict that a main-thread
+        # timer mirrors into the UI.
+        upload_state = {"sent": 0, "total": 1}
+        cancel = threading.Event()
+        _upload_cancel["event"] = cancel
+
+        def on_progress(sent: int, total: int) -> None:
+            upload_state["sent"] = sent
+            upload_state["total"] = max(total, 1)
+
+        def pump():
+            if not tasks.is_running("attach"):
+                return None
+            live = _props()
+            if live:
+                live.progress = int(100 * upload_state["sent"] / upload_state["total"])
+                done_mb = upload_state["sent"] / (1024 * 1024)
+                total_mb = upload_state["total"] / (1024 * 1024)
+                live.status = f"Uploading {file_name}: {done_mb:.1f} / {total_mb:.1f} MB"
+                tasks.redraw_ui()
+            return 0.2
+
         def work():
             result = client.upload_card_attachment(
-                workspace_id, board_id, card_id, export_path
+                workspace_id, board_id, card_id, export_path,
+                progress=on_progress, cancel=cancel,
             )
             if preview_path:
                 # Attached to the row just created rather than uploaded as a
@@ -518,7 +549,15 @@ class PROJECTFLOW_OT_attach_selection(Operator):
             live = _props()
             live.busy = False
             live.status = ""
+            live.progress = 0
+            _upload_cancel["event"] = None
             _cleanup_dir(temp_dir)
+
+            # Record on each exported object which card it went to, so selecting
+            # it later selects the card, and re-attaching needs no hunting.
+            objects = [bpy.data.objects[n] for n in exported_names if n in bpy.data.objects]
+            ops_attachments.tag_objects(objects, card_id, card_title, board_id, workspace_id)
+            ops_attachments.attachments.pop(card_id, None)
 
             if should_advance and next_stage:
                 self.report(
@@ -534,11 +573,17 @@ class PROJECTFLOW_OT_attach_selection(Operator):
             live = _props()
             live.busy = False
             live.status = ""
-            live.last_error = report_api_error(None, exc)
+            live.progress = 0
+            _upload_cancel["event"] = None
             _cleanup_dir(temp_dir)
+            if isinstance(exc, api.UploadCancelled):
+                live.status = "Upload cancelled"
+            else:
+                live.last_error = report_api_error(None, exc)
             tasks.redraw_ui()
 
         tasks.run("attach", "Uploading attachment", work, done, failed)
+        bpy.app.timers.register(pump, first_interval=0.2)
         return {"FINISHED"}
 
 
@@ -619,6 +664,27 @@ class PROJECTFLOW_OT_open_card_in_browser(Operator):
         return {"FINISHED"}
 
 
+#: The running upload's cancel flag, so a button can stop it.
+_upload_cancel = {"event": None}
+
+
+class PROJECTFLOW_OT_cancel_upload(Operator):
+    bl_idname = "projectflow.cancel_upload"
+    bl_label = "Cancel Upload"
+    bl_description = "Stop the upload in progress"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    @classmethod
+    def poll(cls, context):
+        return _upload_cancel["event"] is not None
+
+    def execute(self, context):
+        event = _upload_cancel["event"]
+        if event is not None:
+            event.set()
+        return {"FINISHED"}
+
+
 def _cleanup_dir(path: str) -> None:
     import shutil
 
@@ -632,6 +698,7 @@ classes = (
     PROJECTFLOW_OT_advance_card,
     PROJECTFLOW_OT_attach_selection,
     PROJECTFLOW_OT_add_comment,
+    PROJECTFLOW_OT_cancel_upload,
     PROJECTFLOW_OT_open_card_in_browser,
 )
 

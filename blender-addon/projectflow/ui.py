@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel, UIList
 
-from . import ops_card_extras, properties, session, tasks
+from . import ops_attachments, ops_card_extras, properties, session, tasks
 from .preferences import get_preferences
 
 CATEGORY = "ProjectFlow"
@@ -106,7 +106,12 @@ class PROJECTFLOW_PT_main(ProjectFlowPanelBase, Panel):
             info.label(text=", ".join(tasks.active_labels()) + "…", icon="SORTTIME")
 
         if props.busy and props.progress:
-            layout.prop(props, "progress", text=props.status or "Working")
+            row = layout.row(align=True)
+            row.prop(props, "progress", text=props.status or "Working")
+            # Only an upload can be stopped part-way; a sync or board load
+            # finishes quickly or not at all.
+            if tasks.is_running("attach"):
+                row.operator("projectflow.cancel_upload", text="", icon="X")
         elif props.status:
             layout.label(text=props.status, icon="INFO")
 
@@ -177,6 +182,16 @@ class PROJECTFLOW_PT_boards(ProjectFlowPanelBase, Panel):
         if props.workspace_id in {"", "NONE"}:
             layout.label(text="Choose a workspace first", icon="INFO")
             return
+
+        # Which card does the selected object belong to? Written when a model is
+        # attached from here or imported from a card, and kept in the .blend.
+        link = ops_attachments.linked_card(context.active_object)
+        if link:
+            box = layout.box()
+            row = box.row(align=True)
+            row.label(text=link["title"] or "Linked card", icon="LINKED")
+            row.operator("projectflow.select_linked_card", text="", icon="RESTRICT_SELECT_OFF")
+            box.prop(props, "follow_active_object")
 
         row = layout.row(align=True)
         row.prop(props, "board_id", text="")
@@ -338,12 +353,16 @@ class PROJECTFLOW_PT_card_attachments(ProjectFlowPanelBase, Panel):
     bl_label = "Attachments"
     bl_idname = "PROJECTFLOW_PT_card_attachments"
     bl_parent_id = "PROJECTFLOW_PT_card"
-    bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         props = getattr(context.window_manager, "projectflow", None)
         return props is not None and props.active_card() is not None
+
+    def draw_header(self, context):
+        item = context.window_manager.projectflow.active_card()
+        if item and item.attachment_count:
+            self.layout.label(text=str(item.attachment_count))
 
     def draw(self, context):
         layout = self.layout
@@ -354,10 +373,70 @@ class PROJECTFLOW_PT_card_attachments(ProjectFlowPanelBase, Panel):
             layout.label(text="No attachments yet", icon="FILE_BLANK")
             return
 
-        # The board payload carries counts but not the file list, so the detail
-        # is one click away rather than costing a request per card up front.
-        layout.label(text=f"{item.attachment_count} file(s) on this card", icon="FILE_BLANK")
-        layout.operator("projectflow.open_card_in_browser", text="View in Browser", icon="URL")
+        items = ops_attachments.attachments.get(item.card_id)
+        if items is None:
+            if tasks.is_running(f"attachments-{item.card_id}"):
+                layout.label(text="Loading attachments…", icon="SORTTIME")
+            else:
+                layout.operator(
+                    "projectflow.load_card_attachments",
+                    text=f"Load {item.attachment_count} Attachment(s)",
+                    icon="IMPORT",
+                )
+            return
+
+        if not items:
+            layout.label(text="No attachments", icon="FILE_BLANK")
+
+        images = [a for a in items if ops_attachments.is_image(a)]
+        models = [a for a in items if ops_attachments.is_model(a)]
+        others = [a for a in items if a not in images and a not in models]
+
+        # -- images: thumbnails with view / reference ------------------------
+        for att in images:
+            box = layout.box()
+            icon_id = ops_attachments.preview_icon(att)
+            if icon_id:
+                box.template_icon(icon_value=icon_id, scale=7.0)
+            elif (att.get("fileSize") or 0) > ops_attachments.AUTO_PREVIEW_MAX_BYTES:
+                box.label(text="Large image — preview on request", icon="IMAGE_DATA")
+            else:
+                box.label(text="Loading preview…", icon="SORTTIME")
+
+            box.label(text=_short(att.get("fileName", "image")), icon="IMAGE_DATA")
+            row = box.row(align=True)
+            op = row.operator("projectflow.view_attachment_image", text="View", icon="ZOOM_IN")
+            op.attachment_id = att.get("id", "")
+            op = row.operator("projectflow.use_as_reference", text="Reference", icon="IMAGE_REFERENCE")
+            op.attachment_id = att.get("id", "")
+
+        # -- models: import into the scene -----------------------------------
+        for att in models:
+            row = layout.row(align=True)
+            size_mb = (att.get("fileSize") or 0) / (1024 * 1024)
+            row.label(text=f"{_short(att.get('fileName', 'model'))}  ({size_mb:.1f} MB)", icon="MESH_DATA")
+            op = row.operator("projectflow.import_attachment", text="Import", icon="IMPORT")
+            op.attachment_id = att.get("id", "")
+
+        # -- anything Blender cannot open ------------------------------------
+        for att in others:
+            row = layout.row(align=True)
+            row.label(text=_short(att.get("fileName", "file")), icon="FILE_BLANK")
+            op = row.operator("projectflow.open_attachment_url", text="", icon="URL")
+            op.attachment_id = att.get("id", "")
+
+        layout.operator("projectflow.load_card_attachments", text="Refresh", icon="FILE_REFRESH")
+
+
+def _short(name: str, limit: int = 30) -> str:
+    """Sidebar rows clip long names mid-extension; keep the extension visible."""
+    if len(name) <= limit:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        return name[: limit - 1] + "…"
+    keep = max(limit - len(ext) - 2, 4)
+    return f"{stem[:keep]}….{ext}"
 
 
 class PROJECTFLOW_PT_card_checklists(ProjectFlowPanelBase, Panel):
