@@ -160,7 +160,7 @@ class PROJECTFLOW_PT_assets(ProjectFlowPanelBase, Panel):
         box = layout.box()
         box.scale_y = 0.85
         box.label(
-            text=f"Cache: {cache_mod.format_size(asset_cache.size_bytes())}",
+            text=f"Cache: {cache_mod.format_size(asset_cache.cached_size_bytes())}",
             icon="DISK_DRIVE",
         )
         box.label(text="Drag assets from the browser into the scene", icon="INFO")

@@ -164,10 +164,32 @@ class AssetCache:
                     pass
         return total
 
+    def cached_size_bytes(self, max_age: float = 30.0) -> int:
+        """``size_bytes()`` with a short-lived memo, for use while drawing UI.
+
+        Panels redraw on every mouse movement, and walking thousands of cached
+        files each time cost ~300 ms per redraw at 6,000 files — visibly
+        stuttering the whole sidebar. A figure a few seconds stale is fine for a
+        label; anything that changes the cache calls ``invalidate_size()``.
+        """
+        import time
+
+        now = time.monotonic()
+        memo = getattr(self, "_size_memo", None)
+        if memo is not None and now - memo[0] < max_age:
+            return memo[1]
+        value = self.size_bytes()
+        self._size_memo = (now, value)
+        return value
+
+    def invalidate_size(self) -> None:
+        self._size_memo = None
+
     def clear(self) -> None:
         for directory in (self.files_dir, self.blends_dir):
             shutil.rmtree(directory, ignore_errors=True)
         self.ensure_dirs()
+        self.invalidate_size()
 
 
 def format_size(num_bytes: float) -> str:

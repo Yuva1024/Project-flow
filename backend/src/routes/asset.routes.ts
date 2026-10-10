@@ -287,8 +287,11 @@ router.get('/', async (req: AuthRequest, res: any) => {
         const workspaceId = req.params.workspaceId as string;
         const { folderId, tagId, search, mimeType, page = '1', limit = '50' } = req.query;
 
-        const p = parseInt(page as string) || 1;
-        const l = parseInt(limit as string) || 50;
+        // Bounded: an unchecked limit let one request pull the whole library with
+        // every include, and a negative page produced a negative skip, which
+        // Prisma rejects with a 500.
+        const p = Math.max(1, parseInt(page as string) || 1);
+        const l = Math.min(100, Math.max(1, parseInt(limit as string) || 50));
 
         const where: any = { workspaceId };
         if (folderId) where.folderId = folderId;
@@ -335,18 +338,20 @@ router.get('/', async (req: AuthRequest, res: any) => {
             }
         }
 
-        const total = await prisma.asset.count({ where });
-        const assets = await prisma.asset.findMany({
-            where,
-            include: {
-                tags: { include: { tag: true } },
-                folder: true,
-                uploadedBy: { select: { id: true, name: true, avatarUrl: true } }
-            },
-            skip: (p - 1) * l,
-            take: l,
-            orderBy: { createdAt: 'desc' }
-        });
+        const [total, assets] = await Promise.all([
+            prisma.asset.count({ where }),
+            prisma.asset.findMany({
+                where,
+                include: {
+                    tags: { include: { tag: true } },
+                    folder: true,
+                    uploadedBy: { select: { id: true, name: true, avatarUrl: true } }
+                },
+                skip: (p - 1) * l,
+                take: l,
+                orderBy: { createdAt: 'desc' }
+            }),
+        ]);
 
         res.json({ assets, total, page: p, limit: l });
     } catch (error) {

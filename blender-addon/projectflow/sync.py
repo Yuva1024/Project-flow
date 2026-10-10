@@ -122,16 +122,33 @@ def run_sync(
         key = cache.cache_key(file_url, file_name)
         pending.setdefault(key, {"url": file_url, "name": file_name})
 
-    for index, (key, info) in enumerate(pending.items(), start=1):
-        fraction = 0.1 + 0.5 * (index / max(len(pending), 1))
-        report(f"Downloading {info['name']} ({index}/{len(pending)})", fraction)
+    # Downloads are network-bound and independent, so run several at once. A
+    # library of a few hundred files fetched one at a time spends nearly all its
+    # time idle, waiting on round trips. Four at a time is polite to R2 and
+    # keeps progress reporting simple.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def fetch(item):
+        key, info = item
         destination = os.path.join(asset_cache.files_dir, key)
-        try:
-            written = api.download_file(info["url"], destination)
-            result.downloaded += 1
-            result.downloaded_bytes += written
-        except api.ApiError as exc:
-            result.errors.append(f"{info['name']}: {exc.message}")
+        return info, api.download_file(info["url"], destination)
+
+    finished = 0
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(fetch, item): item[1] for item in pending.items()}
+        for future in as_completed(futures):
+            info = futures[future]
+            finished += 1
+            report(
+                f"Downloaded {info['name']} ({finished}/{len(pending)})",
+                0.1 + 0.5 * (finished / max(len(pending), 1)),
+            )
+            try:
+                _info, written = future.result()
+                result.downloaded += 1
+                result.downloaded_bytes += written
+            except api.ApiError as exc:
+                result.errors.append(f"{info['name']}: {exc.message}")
 
     # -- 3. build .blend wrappers -----------------------------------------
 

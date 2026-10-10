@@ -98,37 +98,40 @@ export const getBoardById = async (req: AuthRequest, res: Response) => {
         const workspaceId = req.params.workspaceId as string;
         const boardId = req.params.boardId as string;
 
-        const membership = await assertWorkspaceMember(workspaceId, userId);
-        if (!membership) {
-            return res.status(403).json({ message: 'Not a member of this workspace' });
-        }
-
-        const board = await prisma.board.findFirst({
-            where: { id: boardId, workspaceId },
-            include: {
-                lists: {
-                    orderBy: { position: 'asc' },
-                    include: {
-                        cards: {
-                            orderBy: { position: 'asc' },
-                            // Labels and members are included so a client can render a
-                            // full card list from this one response. Without them the
-                            // Blender addon would need a request per card, which the
-                            // global rate limiter would reject on a busy board.
-                            include: {
-                                labels: { include: { label: true } },
-                                members: {
-                                    include: {
-                                        user: { select: { id: true, name: true, avatarUrl: true } },
+        // Membership and the board are independent, so fetch them together; the
+        // membership result still decides whether the board is returned.
+        const [membership, board] = await Promise.all([
+            assertWorkspaceMember(workspaceId, userId),
+            prisma.board.findFirst({
+                where: { id: boardId, workspaceId },
+                include: {
+                    lists: {
+                        orderBy: { position: 'asc' },
+                        include: {
+                            cards: {
+                                orderBy: { position: 'asc' },
+                                // Labels and members are included so a client can render a
+                                // full card list from this one response. Without them the
+                                // Blender addon would need a request per card, which the
+                                // global rate limiter would reject on a busy board.
+                                include: {
+                                    labels: { include: { label: true } },
+                                    members: {
+                                        include: {
+                                            user: { select: { id: true, name: true, avatarUrl: true } },
+                                        },
                                     },
+                                    _count: { select: { attachments: true, comments: true } },
                                 },
-                                _count: { select: { attachments: true, comments: true } },
                             },
                         },
                     },
                 },
-            },
-        });
+            }),
+        ]);
+        if (!membership) {
+            return res.status(403).json({ message: 'Not a member of this workspace' });
+        }
 
         if (!board) {
             return res.status(404).json({ message: 'Board not found' });

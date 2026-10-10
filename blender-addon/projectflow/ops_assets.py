@@ -113,6 +113,7 @@ class PROJECTFLOW_OT_sync_assets(Operator):
             live.busy = False
             live.progress = 100
             live.status = result.summary()
+            asset_cache.invalidate_size()
 
             if result.errors:
                 live.last_error = result.errors[0]

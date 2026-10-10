@@ -39,6 +39,10 @@ function getMimeCategory(mime?: string, fileName?: string): string {
 
 export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibraryProps) {
     const [assets, setAssets] = useState<any[]>([]);
+    // The server pages results (50 at a time). The page used to read only the
+    // first one, so anything past the 50th asset was silently invisible.
+    const [total, setTotal] = useState(0);
+    const [loadingMore, setLoadingMore] = useState(false);
     // Loads the ~1 MB model-viewer bundle only when a 3D thumbnail will render.
     useModelViewer(assets.some((a: any) => /\.(glb|gltf)$/i.test(a.fileName || "")));
     const [folders, setFolders] = useState<any[]>([]);
@@ -62,11 +66,13 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
     // and show the wrong folder. Only the newest request may write.
     const latestFetch = useRef(0);
 
-    const fetchAssets = async () => {
+    const fetchAssets = async (page = 1) => {
         const requestId = ++latestFetch.current;
         setLoading(true);
         try {
             const params = new URLSearchParams();
+            params.append('page', String(page));
+            params.append('limit', '50');
             if (selectedFolder) params.append('folderId', selectedFolder);
             if (searchQuery) params.append('search', searchQuery);
             if (selectedTags.length > 0) params.append('tagId', selectedTags.join(','));
@@ -77,13 +83,23 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
             const { data } = await api.get(`/workspaces/${workspaceId}/assets?${params.toString()}`);
             if (requestId !== latestFetch.current) return;
             const list = Array.isArray(data) ? data : (data.assets || []);
-            setAssets(list);
+            setTotal(Array.isArray(data) ? list.length : (data.total ?? list.length));
+            // Page 1 replaces the list; later pages append, skipping any row a
+            // concurrent upload may have shifted onto two pages.
+            setAssets(prev => {
+                if (page === 1) return list;
+                const seen = new Set(prev.map((a: any) => a.id));
+                return [...prev, ...list.filter((a: any) => !seen.has(a.id))];
+            });
         } catch (error) {
             if (requestId !== latestFetch.current) return;
             console.error("[AssetLibrary] Failed to fetch assets", error);
             toast.error("Failed to load assets");
         } finally {
-            if (requestId === latestFetch.current) setLoading(false);
+            if (requestId === latestFetch.current) {
+                setLoading(false);
+                setLoadingMore(false);
+            }
         }
     };
 
@@ -105,9 +121,14 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
     }, [workspaceId]);
 
     useEffect(() => {
-        const debounce = setTimeout(fetchAssets, 300);
+        const debounce = setTimeout(() => fetchAssets(1), 300);
         return () => clearTimeout(debounce);
     }, [workspaceId, selectedFolder, selectedTags, selectedMimeTypes, searchQuery]);
+
+    const loadMore = () => {
+        setLoadingMore(true);
+        fetchAssets(Math.floor(assets.length / 50) + 1);
+    };
 
     const handleCreateFolder = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -472,6 +493,16 @@ export default function AssetLibrary({ workspaceId, onSelectAsset }: AssetLibrar
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    {!loading && assets.length > 0 && assets.length < total && (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '20px 0 4px' }}>
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                Showing {assets.length} of {total}
+                            </span>
+                            <button onClick={loadMore} disabled={loadingMore} className="btn-secondary" style={{ padding: '6px 14px', fontSize: 12 }}>
+                                {loadingMore ? 'Loading…' : 'Load more'}
+                            </button>
                         </div>
                     )}
                 </div>

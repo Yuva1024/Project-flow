@@ -10,6 +10,8 @@ from bpy.types import AddonPreferences
 
 from . import cache, session
 
+_cache_instances: dict = {}
+
 DEFAULT_SERVER = "https://project-flow-tx4p.onrender.com"
 # The website and the API are separate deployments on different domains, so
 # one cannot be derived from the other.
@@ -72,7 +74,13 @@ class ProjectFlowPreferences(AddonPreferences):
         return bpy.path.abspath(self.cache_dir) if self.cache_dir else default_cache_dir()
 
     def get_cache(self) -> cache.AssetCache:
-        return cache.AssetCache(self.resolved_cache_dir())
+        # One instance per folder, reused: building a fresh one on every call
+        # threw away the size memo and defeated the point of having it.
+        path = self.resolved_cache_dir()
+        existing = _cache_instances.get(path)
+        if existing is None:
+            existing = _cache_instances[path] = cache.AssetCache(path)
+        return existing
 
     def draw(self, context):
         layout = self.layout
@@ -138,7 +146,7 @@ class ProjectFlowPreferences(AddonPreferences):
 
         asset_cache = self.get_cache()
         if os.path.isdir(asset_cache.files_dir):
-            size = cache.format_size(asset_cache.size_bytes())
+            size = cache.format_size(asset_cache.cached_size_bytes())
             row = box.row()
             row.label(text=f"Cache size: {size}", icon="FILE_FOLDER")
             row.operator("projectflow.clear_cache", text="Clear", icon="TRASH")

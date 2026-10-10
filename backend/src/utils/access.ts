@@ -21,11 +21,13 @@ export async function getMembership(workspaceId: string, userId: string) {
 
 /** Verifies the board exists inside a workspace the requester belongs to. */
 export async function assertBoardAccess(workspaceId: string, boardId: string, userId: string) {
-    const membership = await getMembership(workspaceId, userId);
-    if (!membership) return null;
-
-    const board = await prisma.board.findFirst({ where: { id: boardId, workspaceId } });
-    if (!board) return null;
+    // Independent lookups, so they run together rather than back to back. A
+    // non-member still gets nothing back; the second query is just wasted.
+    const [membership, board] = await Promise.all([
+        getMembership(workspaceId, userId),
+        prisma.board.findFirst({ where: { id: boardId, workspaceId } }),
+    ]);
+    if (!membership || !board) return null;
 
     return { board, membership };
 }
@@ -37,13 +39,13 @@ export async function assertCardAccess(
     cardId: string,
     userId: string,
 ) {
-    const membership = await getMembership(workspaceId, userId);
-    if (!membership) return null;
-
-    const card = await prisma.card.findFirst({
-        where: { id: cardId, list: { board: { id: boardId, workspaceId } } },
-    });
-    if (!card) return null;
+    const [membership, card] = await Promise.all([
+        getMembership(workspaceId, userId),
+        prisma.card.findFirst({
+            where: { id: cardId, list: { board: { id: boardId, workspaceId } } },
+        }),
+    ]);
+    if (!membership || !card) return null;
 
     return { card, membership };
 }
