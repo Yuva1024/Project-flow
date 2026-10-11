@@ -503,3 +503,37 @@ class TestAttachmentWiring(unittest.TestCase):
         # A preview collection that is never removed leaks, and Blender warns
         # about it on every add-on reload.
         self.assertIn("bpy.utils.previews.remove(_previews)", self.src)
+
+
+class TestLibraryPublish(unittest.TestCase):
+    """Publishing to the library sends the folder and tags as the server expects."""
+
+    def setUp(self):
+        self.api = _load("api")
+        self.client = self.api.ApiClient("https://example.test")
+        self.calls = []
+        self.client._upload = lambda path, file_path, fields=None, **kw: self.calls.append((path, fields)) or {}
+
+    def test_folder_and_tags_are_form_fields(self):
+        import json
+
+        self.client.upload_library_asset("ws1", "x.fbx", folder_id="f9", tag_ids=["a", "b"])
+        path, fields = self.calls[0]
+        self.assertEqual(path, "/api/workspaces/ws1/assets")
+        self.assertEqual(fields["folderId"], "f9")
+        # The route JSON.parses tagIds; a plain comma list would be dropped.
+        self.assertEqual(json.loads(fields["tagIds"]), ["a", "b"])
+
+    def test_root_and_no_tags_send_nothing_extra(self):
+        self.client.upload_library_asset("ws1", "x.fbx")
+        self.assertEqual(self.calls[0][1], {})
+
+    def test_tag_multi_select_stays_within_bit_flag_range(self):
+        # ENUM_FLAG items are bit flags; more than 32 would overflow.
+        with open(os.path.join(_PACKAGE_DIR, "ops_library_publish.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        import re
+
+        limit = int(re.search(r"^MAX_TAGS = (\d+)", src, re.M).group(1))
+        self.assertLessEqual(limit, 32)
+        self.assertIn("1 << index", src)

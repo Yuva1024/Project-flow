@@ -87,6 +87,17 @@ Dragging is only supported *from the Asset Browser* — Blender has no API for
 dragging out of a custom sidebar panel — which is why the add-on routes you
 there rather than reimplementing a grid that could not drop anywhere.
 
+### Adding your own work to the library
+
+Select objects and click **Add Selection to Library** in the Asset Library panel.
+Pick a name, a folder and any tags, and choose an export preset — the same
+presets and options as attaching to a card. The upload streams with a progress
+bar and can be cancelled.
+
+It appears on the website straight away. Click **Sync Asset Library** to see it
+in Blender's Asset Browser. Only glTF/GLB shows a 3D preview on the website;
+other formats appear there as a file card.
+
 ### Why it is fast on repeat runs
 
 Files are stored server-side at `files/<sha256>.<ext>` — the content hash *is*

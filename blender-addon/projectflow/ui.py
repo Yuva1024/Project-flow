@@ -110,7 +110,7 @@ class PROJECTFLOW_PT_main(ProjectFlowPanelBase, Panel):
             row.prop(props, "progress", text=props.status or "Working")
             # Only an upload can be stopped part-way; a sync or board load
             # finishes quickly or not at all.
-            if tasks.is_running("attach"):
+            if tasks.is_running("attach") or tasks.is_running("publish"):
                 row.operator("projectflow.cancel_upload", text="", icon="X")
         elif props.status:
             layout.label(text=props.status, icon="INFO")
@@ -149,6 +149,18 @@ class PROJECTFLOW_PT_assets(ProjectFlowPanelBase, Panel):
         col.operator(
             "projectflow.open_asset_browser", text="Browse Assets", icon="ASSET_MANAGER"
         )
+
+        # Publish goes the other way: from this scene into the shared library.
+        publish = layout.column()
+        publish.scale_y = 1.2
+        publish.enabled = len(context.selected_objects) > 0 and not props.busy
+        publish.operator(
+            "projectflow.publish_to_library", text="Add Selection to Library", icon="EXPORT"
+        )
+        if not context.selected_objects:
+            hint = layout.row()
+            hint.scale_y = 0.8
+            hint.label(text="Select objects to add them to the library", icon="INFO")
 
         row = layout.row(align=True)
         row.operator("projectflow.register_library", text="Register Library", icon="FILE_REFRESH")

@@ -247,9 +247,10 @@ class PROJECTFLOW_OT_sign_out(Operator):
     def execute(self, context):
         session.state.sign_out()
         properties.clear_caches()
-        from . import ops_attachments
+        from . import ops_attachments, ops_library_publish
 
         ops_attachments.clear_caches()
+        ops_library_publish.clear_caches()
 
         props = getattr(context.window_manager, "projectflow", None)
         if props:

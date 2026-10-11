@@ -376,6 +376,32 @@ class ApiClient:
             cancel=cancel,
         )
 
+    def upload_library_asset(
+        self,
+        workspace_id: str,
+        file_path: str,
+        folder_id: Optional[str] = None,
+        tag_ids: Optional[List[str]] = None,
+        progress: Optional[Callable[[int, int], None]] = None,
+        cancel: Optional[threading.Event] = None,
+    ) -> Dict[str, Any]:
+        """Adds a file to the workspace asset library, optionally filed and tagged.
+
+        The server reads tagIds as a JSON array in a form field.
+        """
+        fields: Dict[str, str] = {}
+        if folder_id:
+            fields["folderId"] = folder_id
+        if tag_ids:
+            fields["tagIds"] = json.dumps(list(tag_ids))
+        return self._upload(
+            f"/api/workspaces/{workspace_id}/assets",
+            file_path,
+            fields=fields,
+            progress=progress,
+            cancel=cancel,
+        )
+
     def upload_attachment_preview(
         self,
         workspace_id: str,

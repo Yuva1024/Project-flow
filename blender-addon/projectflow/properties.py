@@ -175,6 +175,10 @@ def move_target_items(self, context):
 
 def _on_workspace_changed(self, context):
     """Clears board state so the panel never shows another workspace's cards."""
+    from . import ops_library_publish
+
+    ops_library_publish.clear_caches()
+    ops_library_publish.request_choices(self.workspace_id)
     set_boards([])
     set_board(None)
     self.board_id = "NONE"

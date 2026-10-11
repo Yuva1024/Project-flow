@@ -20,6 +20,7 @@ from . import (
     ops_auth,
     ops_boards,
     ops_card_extras,
+    ops_library_publish,
     ops_presets,
     preferences,
     properties,
@@ -40,6 +41,7 @@ _modules = (
     ops_boards,
     ops_attachments,
     ops_card_extras,
+    ops_library_publish,
     ui,
 )
 
