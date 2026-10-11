@@ -56,7 +56,12 @@ export default function DashboardPage() {
     useEffect(() => { loadUser(); }, []);
     useEffect(() => {
         if (!authLoading && !token) { router.replace("/login"); return; }
-        if (token) fetchWorkspaces().catch(() => { });
+        if (token) {
+            fetchWorkspaces().catch(() => {
+                // Failing silently looked exactly like "you have no workspaces".
+                toast.error("Couldn't load your workspaces. Check your connection and refresh.");
+            });
+        }
     }, [token, authLoading]);
     useEffect(() => {
         if (currentWorkspace) {

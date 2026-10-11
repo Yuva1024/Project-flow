@@ -275,6 +275,12 @@ export default function BoardPage() {
     const { token, loadUser, isLoading: authLoading } = useAuthStore();
     const { currentBoard, fetchBoard, reorderCards, reorderLists, updateBoard, deleteBoard, addList: addListToBoard, removeCard, isLoading } = useBoardStore();
     const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+    // Set when the board could not be loaded. Without it the page had no way to
+    // leave its spinner: the gate was `!currentBoard`, and a failed fetch leaves
+    // that empty — so any error (server waking up, a network blip, a board you
+    // cannot open) meant a spinner forever and a toast that vanished in seconds.
+    const [loadError, setLoadError] = useState<null | "network">(null);
+    const [attempt, setAttempt] = useState(0);
     const [showAddList, setShowAddList] = useState(false);
     const [listTitle, setListTitle] = useState("");
 
@@ -293,8 +299,38 @@ export default function BoardPage() {
     useEffect(() => { loadUser(); }, []);
     useEffect(() => {
         if (!authLoading && !token) { router.replace("/login"); return; }
-        if (token && wId && bId) fetchBoard(wId, bId).catch(() => toast.error("Board not found"));
-    }, [token, authLoading, wId, bId]);
+        if (!(token && wId && bId)) return;
+
+        let cancelled = false;
+        setLoadError(null);
+
+        const load = async (canRetry: boolean) => {
+            try {
+                await fetchBoard(wId, bId);
+            } catch (err: any) {
+                if (cancelled) return;
+                const status = err?.response?.status;
+                if (status === 401) return; // the request layer is already redirecting to login
+                if (status === 403 || status === 404) {
+                    toast.error("Board not found");
+                    router.replace("/dashboard");
+                    return;
+                }
+                // Anything else is probably transient — the free-tier backend
+                // waking up, or a dropped connection. Try once more quietly,
+                // then show a screen with a way forward instead of a spinner.
+                if (canRetry) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    if (!cancelled) await load(false);
+                    return;
+                }
+                setLoadError("network");
+            }
+        };
+        load(true);
+
+        return () => { cancelled = true; };
+    }, [token, authLoading, wId, bId, attempt]);
     useEffect(() => {
         api.get(`/workspaces/${wId}/boards/${bId}/labels`).then(r => setBoardLabels(r.data)).catch(() => { });
     }, [wId, bId]);
@@ -399,7 +435,25 @@ export default function BoardPage() {
         }
     }, [wId, bId, removeCard]);
 
-    if (authLoading || isLoading || !currentBoard) {
+    if (loadError) {
+        return (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, minHeight: "100vh", background: "var(--bg-base)", padding: 24, textAlign: "center" }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>Couldn't load this board</div>
+                <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 360, lineHeight: 1.5 }}>
+                    The server didn't respond. It may be waking up — this usually clears within a few seconds.
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                    <button className="btn-primary" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => setAttempt(n => n + 1)}>Try again</button>
+                    <button className="btn-ghost" style={{ padding: "8px 16px", fontSize: 13 }} onClick={() => router.push("/dashboard")}>Back to dashboard</button>
+                </div>
+            </div>
+        );
+    }
+
+    // `currentBoard.id !== bId` catches the board you just navigated away from:
+    // the store keeps it until the new one arrives, and without this check a
+    // failed load left the old board on screen under the new board's URL.
+    if (authLoading || isLoading || !currentBoard || currentBoard.id !== bId) {
         return (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg-base)" }}>
                 <Loader2 size={28} className="spinner" style={{ color: "var(--accent)" }} />

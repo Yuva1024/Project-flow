@@ -3,9 +3,18 @@ import axios from 'axios';
 const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
     headers: { 'Content-Type': 'application/json' },
+    // Without a timeout a dropped connection never settles, so whatever screen
+    // is waiting on it (a full-page spinner, usually) waits forever. Generous
+    // enough for the free-tier backend's ~25 s cold start.
+    timeout: 60_000,
 });
 
 api.interceptors.request.use((config) => {
+    // Uploads can legitimately take minutes (up to 250 MB), and axios's timeout
+    // covers the whole request, so a file upload is exempt from the default.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        config.timeout = 0;
+    }
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
         if (token) {
